@@ -3,24 +3,54 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "concurrently -k -n web,worker -c blue,green \"next dev -H 127.0.0.1\" \"tsx watch --clear-screen=false worker/index.ts\"",
     "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
+    "start": "concurrently -k -n web,worker -c blue,green \"next start -H 127.0.0.1\" \"tsx worker/index.ts\"",
+    "worker": "tsx worker/index.ts",
+    "test": "vitest run",
+    "lint": "eslint",
+    "hash-password": "tsx scripts/hash-password.ts",
+    "copy-to-hosted": "tsx scripts/copy-to-hosted.ts",
+    "verify-profiles": "tsx scripts/verify-google-profiles.ts",
+    "recheck": "tsx scripts/recheck.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.133.0",
+    "@libsql/client": "^0.18.0",
+    "cheerio": "^1.2.0",
+    "i18n-iso-countries": "^7.14.0",
+    "imapflow": "^2.4.0",
+    "leaflet": "^1.9.4",
+    "leaflet.heat": "^0.2.0",
+    "lucide-react": "^1.55.0",
+    "mailparser": "^3.9.38",
     "next": "16.4.0",
+    "nodemailer": "^10.1.0",
+    "p-limit": "^7.3.3",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "react-leaflet": "^5.0.0",
+    "topojson-client": "^3.1.0",
+    "tz-lookup": "^6.1.25",
+    "world-atlas": "^2.0.2"
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",
-    "@types/node": "^20",
+    "@types/geojson": "^7946.0.16",
+    "@types/leaflet": "^1.9.22",
+    "@types/mailparser": "^3.9.0",
+    "@types/node": "^22.20.5",
+    "@types/nodemailer": "^8.0.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/topojson-client": "^3.1.5",
+    "@types/tz-lookup": "^6.1.2",
+    "concurrently": "^10.0.6",
     "eslint": "^9",
     "eslint-config-next": "16.4.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "tsx": "^4.23.15",
+    "typescript": "^5",
+    "vitest": "^5.0.4"
   }
 }

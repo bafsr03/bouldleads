@@ -1,0 +1,146 @@
+// Local-language search terms. Google finds different (and more local) businesses when you search in
+// the country's language: in Lima, "tabaquería" turns up shops with no website that "smoke shop" misses.
+// English stays the first pass everywhere; in non-English countries a second pass runs in the local
+// language, and the map-ranking check uses the local term (that's what their customers type).
+
+export type Lang = "es" | "pt" | "fr" | "de" | "it" | "nl";
+
+const COUNTRY_LANG: Record<string, Lang> = {
+  // Spanish
+  ES: "es", MX: "es", AR: "es", CO: "es", PE: "es", CL: "es", VE: "es", EC: "es", GT: "es", CU: "es", BO: "es", DO: "es",
+  HN: "es", PY: "es", SV: "es", NI: "es", CR: "es", PA: "es", UY: "es", PR: "es",
+  // Portuguese
+  BR: "pt", PT: "pt", AO: "pt", MZ: "pt",
+  // French
+  FR: "fr", BE: "fr", LU: "fr", MC: "fr", SN: "fr", CI: "fr", MA: "fr", TN: "fr", DZ: "fr", HT: "fr",
+  // German
+  DE: "de", AT: "de", CH: "de", LI: "de",
+  // Italian
+  IT: "it", SM: "it",
+  // Dutch
+  NL: "nl", SR: "nl",
+};
+
+/** The country's search language, or null where English works best. */
+export const localLang = (countryCode: string | null | undefined): Lang | null => (countryCode ? (COUNTRY_LANG[countryCode.toUpperCase()] ?? null) : null);
+
+// type id → [es, pt, fr, de, it, nl] for the catalog's main Google term.
+const T: Record<string, [string, string, string, string, string, string]> = {
+  restaurant: ["restaurante", "restaurante", "restaurant", "Restaurant", "ristorante", "restaurant"],
+  cafe: ["cafetería", "cafeteria", "café", "Café", "caffè", "koffiezaak"],
+  bar: ["bar", "bar", "bar", "Bar", "bar", "café"],
+  fast_food: ["comida rápida", "lanchonete", "restauration rapide", "Imbiss", "fast food", "afhaalrestaurant"],
+  bakery: ["panadería", "padaria", "boulangerie", "Bäckerei", "panetteria", "bakkerij"],
+  ice_cream: ["heladería", "sorveteria", "glacier", "Eisdiele", "gelateria", "ijssalon"],
+  butcher: ["carnicería", "açougue", "boucherie", "Metzgerei", "macelleria", "slagerij"],
+  grocery: ["tienda de abarrotes", "mercearia", "épicerie", "Lebensmittelgeschäft", "alimentari", "supermarkt"],
+  liquor: ["licorería", "loja de bebidas", "caviste", "Spirituosengeschäft", "enoteca", "slijterij"],
+  brewery: ["cervecería artesanal", "cervejaria", "brasserie artisanale", "Brauerei", "birrificio", "brouwerij"],
+  caterer: ["servicio de catering", "buffet", "traiteur", "Catering", "catering", "catering"],
+  smoke_shop: ["tabaquería", "tabacaria", "bureau de tabac", "Tabakladen", "tabaccheria", "tabakszaak"],
+  vape_shop: ["tienda de vapeo", "loja de vape", "magasin de cigarette électronique", "E-Zigaretten Shop", "negozio sigarette elettroniche", "vape winkel"],
+  cbd_shop: ["tienda de cbd", "loja de cbd", "boutique cbd", "CBD Shop", "negozio cbd", "cbd winkel"],
+  hookah: ["bar de cachimbas", "narguilé bar", "bar à chicha", "Shisha Bar", "shisha bar", "shisha lounge"],
+  dentist: ["dentista", "dentista", "dentiste", "Zahnarzt", "dentista", "tandarts"],
+  doctor: ["clínica médica", "clínica médica", "cabinet médical", "Arztpraxis", "studio medico", "huisartsenpraktijk"],
+  pharmacy: ["farmacia", "farmácia", "pharmacie", "Apotheke", "farmacia", "apotheek"],
+  physio: ["fisioterapeuta", "fisioterapeuta", "kinésithérapeute", "Physiotherapie", "fisioterapista", "fysiotherapeut"],
+  chiropractor: ["quiropráctico", "quiropraxista", "chiropracteur", "Chiropraktiker", "chiropratico", "chiropractor"],
+  optician: ["óptica", "ótica", "opticien", "Optiker", "ottico", "opticien"],
+  mental_health: ["psicólogo", "psicólogo", "psychologue", "Psychotherapeut", "psicologo", "psycholoog"],
+  alt_medicine: ["acupuntura", "acupuntura", "acupuncture", "Akupunktur", "agopuntura", "acupunctuur"],
+  hearing: ["centro auditivo", "centro auditivo", "audioprothésiste", "Hörgeräteakustiker", "centro acustico", "audicien"],
+  veterinary: ["veterinaria", "veterinário", "vétérinaire", "Tierarzt", "veterinario", "dierenarts"],
+  hair_salon: ["peluquería", "salão de cabeleireiro", "salon de coiffure", "Friseur", "parrucchiere", "kapper"],
+  barber: ["barbería", "barbearia", "barbier", "Barbershop", "barbiere", "barbier"],
+  beauty_salon: ["salón de belleza", "salão de beleza", "institut de beauté", "Kosmetikstudio", "centro estetico", "schoonheidssalon"],
+  nail_salon: ["salón de uñas", "esmalteria", "onglerie", "Nagelstudio", "centro unghie", "nagelstudio"],
+  spa: ["spa", "spa", "spa", "Day Spa", "spa", "spa"],
+  tanning: ["centro de bronceado", "bronzeamento", "centre de bronzage", "Sonnenstudio", "centro abbronzatura", "zonnestudio"],
+  tattoo: ["estudio de tatuajes", "estúdio de tatuagem", "salon de tatouage", "Tattoostudio", "studio tatuaggi", "tattooshop"],
+  cosmetics: ["tienda de cosméticos", "loja de cosméticos", "magasin de cosmétiques", "Kosmetikgeschäft", "profumeria", "cosmeticawinkel"],
+  gym: ["gimnasio", "academia de ginástica", "salle de sport", "Fitnessstudio", "palestra", "sportschool"],
+  yoga: ["estudio de yoga", "estúdio de yoga", "studio de yoga", "Yogastudio", "studio yoga", "yogastudio"],
+  martial_arts: ["escuela de artes marciales", "academia de artes marciais", "école d'arts martiaux", "Kampfsportschule", "scuola arti marziali", "vechtsportschool"],
+  dance: ["academia de baile", "escola de dança", "école de danse", "Tanzschule", "scuola di danza", "dansschool"],
+  sports_centre: ["club deportivo", "clube esportivo", "club de sport", "Sportverein", "centro sportivo", "sportclub"],
+  climbing: ["gimnasio de escalada", "ginásio de escalada", "salle d'escalade", "Kletterhalle", "palestra di arrampicata", "klimhal"],
+  golf: ["campo de golf", "campo de golfe", "golf", "Golfplatz", "campo da golf", "golfbaan"],
+  clothing: ["tienda de ropa", "loja de roupas", "magasin de vêtements", "Bekleidungsgeschäft", "negozio di abbigliamento", "kledingwinkel"],
+  shoes: ["zapatería", "loja de sapatos", "magasin de chaussures", "Schuhgeschäft", "negozio di scarpe", "schoenenwinkel"],
+  jewelry: ["joyería", "joalheria", "bijouterie", "Juwelier", "gioielleria", "juwelier"],
+  electronics: ["tienda de electrónica", "loja de eletrônicos", "magasin d'électronique", "Elektronikgeschäft", "negozio di elettronica", "elektronicawinkel"],
+  books: ["librería", "livraria", "librairie", "Buchhandlung", "libreria", "boekhandel"],
+  gifts: ["tienda de regalos", "loja de presentes", "boutique de cadeaux", "Geschenkeladen", "negozio di regali", "cadeauwinkel"],
+  toys: ["juguetería", "loja de brinquedos", "magasin de jouets", "Spielwarengeschäft", "negozio di giocattoli", "speelgoedwinkel"],
+  sports_shop: ["tienda de deportes", "loja de artigos esportivos", "magasin de sport", "Sportgeschäft", "negozio di articoli sportivi", "sportwinkel"],
+  bicycle: ["tienda de bicicletas", "loja de bicicletas", "magasin de vélos", "Fahrradladen", "negozio di biciclette", "fietsenwinkel"],
+  music_shop: ["tienda de música", "loja de instrumentos musicais", "magasin de musique", "Musikgeschäft", "negozio di strumenti musicali", "muziekwinkel"],
+  art_shop: ["galería de arte", "galeria de arte", "galerie d'art", "Kunstgalerie", "galleria d'arte", "kunstgalerie"],
+  second_hand: ["tienda de segunda mano", "brechó", "friperie", "Secondhandladen", "negozio dell'usato", "kringloopwinkel"],
+  variety: ["bazar", "bazar", "bazar", "Kaufhaus", "bazar", "warenhuis"],
+  photo: ["tienda de fotografía", "loja de fotografia", "magasin photo", "Fotogeschäft", "negozio di fotografia", "fotowinkel"],
+  fabric: ["tienda de telas", "loja de tecidos", "magasin de tissus", "Stoffladen", "negozio di tessuti", "stoffenwinkel"],
+  adult: ["tienda de lencería", "loja de lingerie", "magasin de lingerie", "Dessousgeschäft", "negozio di intimo", "lingeriewinkel"],
+  furniture: ["mueblería", "loja de móveis", "magasin de meubles", "Möbelgeschäft", "negozio di mobili", "meubelwinkel"],
+  interior: ["diseñador de interiores", "designer de interiores", "décorateur d'intérieur", "Innenarchitekt", "interior designer", "interieurontwerper"],
+  kitchen_bath: ["remodelación de cocinas", "reforma de cozinhas", "rénovation de cuisine", "Küchenstudio", "ristrutturazione cucine", "keukenrenovatie"],
+  garden_centre: ["vivero", "garden center", "jardinerie", "Gartencenter", "garden center", "tuincentrum"],
+  florist: ["florería", "floricultura", "fleuriste", "Blumenladen", "fiorista", "bloemist"],
+  hardware: ["ferretería", "loja de ferragens", "quincaillerie", "Baumarkt", "ferramenta", "bouwmarkt"],
+  car_dealer: ["concesionario de autos", "concessionária de carros", "concessionnaire automobile", "Autohaus", "concessionaria auto", "autodealer"],
+  car_repair: ["taller mecánico", "oficina mecânica", "garage automobile", "Autowerkstatt", "officina meccanica", "autogarage"],
+  tyres: ["llantería", "borracharia", "pneus", "Reifenhändler", "gommista", "bandenservice"],
+  car_wash: ["lavado de autos", "lava-rápido", "station de lavage", "Autowäsche", "autolavaggio", "autowasstraat"],
+  motorcycle: ["concesionario de motos", "concessionária de motos", "concessionnaire moto", "Motorradhändler", "concessionaria moto", "motordealer"],
+  car_rental: ["alquiler de autos", "aluguel de carros", "location de voitures", "Autovermietung", "noleggio auto", "autoverhuur"],
+  lawyer: ["abogado", "advogado", "avocat", "Rechtsanwalt", "avvocato", "advocaat"],
+  accountant: ["contador", "contador", "expert-comptable", "Steuerberater", "commercialista", "accountant"],
+  real_estate: ["inmobiliaria", "imobiliária", "agence immobilière", "Immobilienmakler", "agenzia immobiliare", "makelaar"],
+  insurance: ["agencia de seguros", "corretora de seguros", "agence d'assurance", "Versicherungsagentur", "agenzia assicurativa", "verzekeringskantoor"],
+  financial: ["asesor financiero", "consultor financeiro", "conseiller financier", "Finanzberater", "consulente finanziario", "financieel adviseur"],
+  architect: ["arquitecto", "arquiteto", "architecte", "Architekt", "architetto", "architect"],
+  marketing: ["agencia de marketing", "agência de marketing", "agence marketing", "Marketingagentur", "agenzia di marketing", "marketingbureau"],
+  it: ["servicios informáticos", "serviços de informática", "services informatiques", "IT Dienstleister", "servizi informatici", "it bedrijf"],
+  consulting: ["consultoría", "consultoria", "cabinet de conseil", "Unternehmensberatung", "consulenza", "adviesbureau"],
+  recruitment: ["agencia de empleo", "agência de empregos", "agence de recrutement", "Personalvermittlung", "agenzia per il lavoro", "uitzendbureau"],
+  coworking: ["coworking", "coworking", "espace de coworking", "Coworking Space", "coworking", "coworking"],
+  printing: ["imprenta", "gráfica", "imprimerie", "Druckerei", "tipografia", "drukkerij"],
+  photographer: ["fotógrafo", "fotógrafo", "photographe", "Fotograf", "fotografo", "fotograaf"],
+  plumber: ["gasfitero", "encanador", "plombier", "Klempner", "idraulico", "loodgieter"],
+  electrician: ["electricista", "eletricista", "électricien", "Elektriker", "elettricista", "elektricien"],
+  hvac: ["aire acondicionado", "ar condicionado", "climatisation", "Klimatechnik", "climatizzazione", "airco installateur"],
+  roofer: ["techador", "telhados", "couvreur", "Dachdecker", "lattoniere", "dakdekker"],
+  builder: ["empresa constructora", "construtora", "entreprise de construction", "Bauunternehmen", "impresa edile", "aannemer"],
+  painter: ["pintor de casas", "pintor residencial", "peintre en bâtiment", "Maler", "imbianchino", "schilder"],
+  landscaping: ["jardinería y paisajismo", "paisagismo", "paysagiste", "Garten- und Landschaftsbau", "giardiniere", "hovenier"],
+  locksmith: ["cerrajero", "chaveiro", "serrurier", "Schlüsseldienst", "fabbro", "slotenmaker"],
+  cleaning: ["lavandería", "lavanderia", "pressing", "Reinigung", "lavanderia", "stomerij"],
+  tailor: ["sastre", "alfaiate", "tailleur", "Schneider", "sarto", "kleermaker"],
+  metalwork: ["taller de soldadura", "serralheria", "atelier de soudure", "Schlosserei", "carpenteria metallica", "lasbedrijf"],
+  repair: ["reparación de celulares", "conserto de celular", "réparation de téléphone", "Handyreparatur", "riparazione cellulari", "telefoonreparatie"],
+  hotel: ["hotel", "hotel", "hôtel", "Hotel", "hotel", "hotel"],
+  guest_house: ["hostal", "pousada", "chambre d'hôtes", "Pension", "bed and breakfast", "bed and breakfast"],
+  vacation_rental: ["alquiler vacacional", "aluguel por temporada", "location de vacances", "Ferienwohnung", "casa vacanze", "vakantiewoning"],
+  travel_agency: ["agencia de viajes", "agência de viagens", "agence de voyages", "Reisebüro", "agenzia di viaggi", "reisbureau"],
+  driving_school: ["escuela de manejo", "autoescola", "auto-école", "Fahrschule", "scuola guida", "rijschool"],
+  language_school: ["escuela de idiomas", "escola de idiomas", "école de langues", "Sprachschule", "scuola di lingue", "taleninstituut"],
+  music_school: ["escuela de música", "escola de música", "école de musique", "Musikschule", "scuola di musica", "muziekschool"],
+  tutoring: ["centro de tutoría", "reforço escolar", "soutien scolaire", "Nachhilfe", "ripetizioni", "bijlesinstituut"],
+  childcare: ["guardería", "creche", "crèche", "Kita", "asilo nido", "kinderopvang"],
+  pet_store: ["tienda de mascotas", "pet shop", "animalerie", "Zoohandlung", "negozio di animali", "dierenwinkel"],
+  pet_grooming: ["peluquería canina", "banho e tosa", "toilettage", "Hundesalon", "toelettatura", "trimsalon"],
+  pet_boarding: ["hotel para perros", "hotel para cães", "pension pour chiens", "Hundepension", "pensione per cani", "hondenpension"],
+  nightclub: ["discoteca", "balada", "boîte de nuit", "Nachtclub", "discoteca", "nachtclub"],
+  event_venue: ["salón de eventos", "espaço para eventos", "salle de réception", "Eventlocation", "location per eventi", "evenementenlocatie"],
+  bowling: ["bolera", "boliche", "bowling", "Bowlingcenter", "bowling", "bowlingbaan"],
+  theatre: ["teatro", "teatro", "théâtre", "Theater", "teatro", "theater"],
+  karaoke: ["karaoke", "karaokê", "karaoké", "Karaoke Bar", "karaoke", "karaokebar"],
+};
+
+const IDX: Record<Lang, number> = { es: 0, pt: 1, fr: 2, de: 3, it: 4, nl: 5 };
+
+/** The local-language search term for a catalog type, or null if we don't have one. */
+export function localTerm(typeId: string, lang: Lang): string | null {
+  return T[typeId]?.[IDX[lang]] ?? null;
+}

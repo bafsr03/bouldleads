@@ -1,9 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
   cacheComponents: true,
   partialPrefetching: true,
+  // Native / Node-only packages used by API routes.
+  serverExternalPackages: ["@libsql/client", "libsql", "imapflow", "mailparser", "nodemailer"],
   turbopack: {
     rules: {
       "*.css": {

@@ -1,0 +1,6 @@
+# Never upload the local database, its encryption key, or local env files.
+/data
+/tests/.data
+.env*
+!.env.example
+*.png
