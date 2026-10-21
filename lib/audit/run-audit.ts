@@ -1,6 +1,6 @@
 import pLimit from "p-limit";
 import { db, logEvent, now } from "../db";
-import { getSettings } from "../settings";
+import { getSettings, getSys, setSys } from "../settings";
 import { BUSINESS_TYPES } from "../discovery/categories";
 import { localLang, localTerm } from "../discovery/local-terms";
 import {
@@ -18,6 +18,7 @@ import {
 import { near, resolveCategory, similarName } from "../discovery/match";
 import { checkSite, mobilePageSpeed, type SiteFacts } from "./site";
 import { chainReason, formatPhone, nonFitReason } from "../discovery/fit";
+import { findSite } from "./find-site";
 import { keywordsFor, scoreAudit, type AuditResult, type BusinessFacts, type GoogleFacts, type ManualAnswers } from "./score";
 
 // Automatic research for each lead: Google profile + map ranking + homepage check → score.
@@ -49,10 +50,15 @@ export type AuditRow = {
   chain: number;
   deep: string | null;
   social_url?: string | null;
+  found_site?: string | null;
+  found_site_how?: string | null;
+  site_search_at?: number | null;
 };
 
 const DAY = 86_400_000;
 const CONCURRENCY = 4;
+
+const confirmedFound = (row: AuditRow) => !!row.found_site && (row.found_site_how === "phone" || row.found_site_how === "name");
 
 const typeFor = (row: AuditRow) => BUSINESS_TYPES.find((t) => t.label === row.category);
 
@@ -213,6 +219,9 @@ function inputsFrom(row: AuditRow, site: SiteFacts | null, google: GoogleFacts) 
     chainReason: chainReason(row),
     nonFit: nonFitReason({ name: row.name, googleLabel: row.google_type, categoryId: t?.id }),
     socialUrl: row.social_url ?? null,
+    // A site we found that Google doesn't link: scored as their website, pitched as "link it".
+    ...(!row.website && confirmedFound(row) ? { website: row.found_site!, unlinkedSite: true } : {}),
+    possibleSite: !row.website && row.found_site_how === "possible" ? (row.found_site ?? null) : null,
   };
   return {
     business,
@@ -226,12 +235,13 @@ function inputsFrom(row: AuditRow, site: SiteFacts | null, google: GoogleFacts) 
   };
 }
 
-async function save(id: number, r: AuditResult) {
+/** `researched: false` = a re-score from stored research: the audit's date (its age) doesn't change. */
+async function save(id: number, r: AuditResult, researched = true) {
   await db.run(
-    `UPDATE businesses SET audit = ?, audit_status = 'done', audited_at = ?, visibility_score = ?, conversion_score = ?, priority = ?, tier = ?
+    `UPDATE businesses SET audit = ?, audit_status = 'done', audited_at = COALESCE(?, audited_at), visibility_score = ?, conversion_score = ?, priority = ?, tier = ?
      WHERE id = ?`,
     JSON.stringify(r),
-    now(),
+    researched ? now() : null,
     r.visibility.score,
     r.conversion.score,
     r.priority,
@@ -284,8 +294,15 @@ export async function auditOne(id: number, opts: { forceDeep?: boolean; retried?
   const s = await getSettings();
   const key = await googleKey();
   try {
+    // A Google profile with no website: look for one they never linked (free; once per REAUDIT_DAYS).
+    if (row.google_place_id && !row.website && !row.social_url && (row.site_search_at ?? 0) < now() - REAUDIT_DAYS * DAY && !chainReason(row)) {
+      const found = await findSite({ name: row.name, city: row.city, phone: row.phone });
+      Object.assign(row, { found_site: found?.url ?? null, found_site_how: found?.how ?? null, site_search_at: now() });
+      await db.run("UPDATE businesses SET found_site = ?, found_site_how = ?, site_search_at = ? WHERE id = ?", row.found_site, row.found_site_how, row.site_search_at, id);
+    }
+    const siteUrl = row.website ?? (confirmedFound(row) ? row.found_site! : null);
     const [site, g] = await Promise.all([
-      row.website ? checkSite(row.website, { pageSpeed: s.auditPageSpeed, googleKey: key }) : Promise.resolve(null),
+      siteUrl ? checkSite(siteUrl, { pageSpeed: s.auditPageSpeed, googleKey: key }) : Promise.resolve(null),
       researchGoogle(row),
     ]);
     const google: GoogleFacts = { ...g, deep: row.deep ? (JSON.parse(row.deep) as DeepFacts) : null };
@@ -328,11 +345,38 @@ export async function rescore(id: number, opts: { site?: SiteFacts | null } = {}
   };
   const inputs = { ...prev.inputs, google, business: inputsFrom(row, null, google).business, ...(opts.site !== undefined ? { site: opts.site } : {}) };
   const result = scoreAudit(inputs, manual);
-  await save(id, result);
+  await save(id, result, false);
   return result;
 }
 
-/** Worker batch: requested audits first, then (if enabled) every lead whose email search has finished. */
+// Scheduled re-audits: Google profiles and websites change (closed businesses, new sites, more reviews).
+// Leads whose research is older than REAUDIT_DAYS are refreshed, best first, a few a day, and only
+// while the month's free Google profile lookups have room to spare for new leads.
+export const REAUDIT_DAYS = 90;
+const REAUDIT_PER_DAY = 20;
+const REAUDIT_RESERVE = 300;
+
+export async function staleForReaudit(max: number): Promise<number[]> {
+  if (max <= 0) return [];
+  const day = new Date(now()).toISOString().slice(0, 10);
+  const [d, n] = ((await getSys("reaudit")) ?? "").split(":");
+  const used = d === day ? Number(n) || 0 : 0;
+  const room = Math.min(max, REAUDIT_PER_DAY - used);
+  if (room <= 0) return [];
+  if ((await googleKey()) && (await remaining("details_ent")) < REAUDIT_RESERVE) return [];
+  const rows = await db.all<{ id: number }>(
+    `SELECT id FROM businesses
+     WHERE audit_status = 'done' AND audited_at < ? AND tier IN ('A', 'B', 'C') AND dnc = 0 AND phone_bad = 0
+       AND (call_outcome IS NULL OR call_outcome NOT IN ('audit_booked', 'won', 'not_interested', 'do_not_call'))
+     ORDER BY priority DESC LIMIT ?`,
+    now() - REAUDIT_DAYS * DAY,
+    room,
+  );
+  if (rows.length) await setSys("reaudit", `${day}:${used + rows.length}`);
+  return rows.map((r) => r.id);
+}
+
+/** Worker batch: requested audits first, then (if enabled) every lead whose email search has finished, then stale audits. */
 export async function auditBatch(batchSize = 12): Promise<number> {
   const auto = (await getSettings()).autoAudit;
   // Audits stuck in "running" for 10+ minutes (a background tick that died) are picked up again.
@@ -346,6 +390,7 @@ export async function auditBatch(batchSize = 12): Promise<number> {
     auto ? 1 : 0,
     batchSize,
   );
+  if (ids.length < batchSize) ids.push(...(await staleForReaudit(Math.min(2, batchSize - ids.length))).map((id) => ({ id })));
   if (ids.length === 0) return 0;
   const limit = pLimit(CONCURRENCY);
   await Promise.all(ids.map(({ id }) => limit(() => auditOne(id))));

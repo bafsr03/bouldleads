@@ -11,6 +11,10 @@ export const norm = (s: string) =>
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 
+const SUFFIX = /\b(inc|llc|l l c|co|corp|corporation|company|ltd|pllc|lc|the)\b/g;
+/** "Ross Automotive, Inc." → "ross automotive" */
+export const coreName = (n: string) => norm(n).replace(SUFFIX, " ").replace(/\s+/g, " ").trim();
+
 /** Two business names share most of their words ("La Casita 420 - Smoke Shop" ~ "La Casita 420 Catálogo"). */
 export function similarName(a: string, b: string) {
   const ta = new Set(norm(a).split(" ").filter((w) => w.length > 1));

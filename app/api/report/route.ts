@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { json } from "@/lib/api";
 import { NOT_REACHED } from "@/lib/call-outcomes";
 
-// Call-first reporting: dials, answer rate, bookings and wins by tier and business type; answer rate
+// Call-first reporting: dials, answer rate, bookings and wins by tier, business type and pitch type; answer rate
 // by hour of day (in the business's local time); follow-up replies by email step.
 
 const NOT_REACHED_SQL = `(${NOT_REACHED.map((o) => `'${o}'`).join(", ")})`;
@@ -18,9 +18,11 @@ const groupSql = (key: string) => `
 
 export async function GET() {
   await connection();
-  const [byTier, byType, recent, sentByStep, repliedByStep, totals] = await Promise.all([
+  const [byTier, byType, byPitch, recent, sentByStep, repliedByStep, totals] = await Promise.all([
     db.all(groupSql("COALESCE(b.tier, 'unscored')")),
     db.all(groupSql("COALESCE(b.category, 'Other')")),
+    // The pitch the lead had when it was called (stored on each call from Oct 2026).
+    db.all(groupSql("COALESCE(c.pitch, 'unknown')")),
     db.all<{ created_at: number; outcome: string; lat: number | null; lng: number | null }>(
       "SELECT c.created_at, c.outcome, b.lat, b.lng FROM calls c JOIN businesses b ON b.id = c.business_id ORDER BY c.id DESC LIMIT 5000",
     ),
@@ -50,5 +52,5 @@ export async function GET() {
   }
 
   const steps = sentByStep.map((s) => ({ step: s.step, sent: s.n, replied: repliedByStep.find((r) => r.step === s.step)?.n ?? 0 }));
-  return json({ totals, byTier, byType, byHour: hours.filter((h) => h.dials > 0), followupSteps: steps });
+  return json({ totals, byTier, byType, byPitch, byHour: hours.filter((h) => h.dials > 0), followupSteps: steps });
 }

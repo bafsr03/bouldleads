@@ -227,12 +227,16 @@ const COLUMNS: Record<string, [string, string][]> = {
     ["social_url", "TEXT"], // Facebook / Instagram / Yelp page given as their website: kept, but it isn't a site of their own
     ["warm_tries", "INTEGER NOT NULL DEFAULT 0"], // missed attempts on a warm lead (callback set): after WARM_MAX it goes back to Call again
     ["ask_for", "TEXT"], // who to ask for: "Jamie answers, ask for Kenny"
+    ["found_site", "TEXT"], // their website when Google doesn't link one (lib/audit/find-site.ts)
+    ["found_site_how", "TEXT"], // phone | name (confirmed on the page) | possible (check it)
+    ["site_search_at", "INTEGER"], // when we last looked for an unlinked site
   ],
   searches: [
     ["place", "TEXT"], // "Lima, Peru": groups searches on the Places page
     ["cursor", "TEXT"], // JSON {googleDone, nextTile}: lets a search resume across background ticks
   ],
   campaigns: [["kind", "TEXT NOT NULL DEFAULT 'campaign'"]], // campaign | followup (the no-answer sequence)
+  calls: [["pitch", "TEXT"]], // the lead's pitch type when called (website | visibility | both | corporate | solid): which pitch books
 };
 
 async function migrate(c: Client) {

@@ -160,6 +160,10 @@ export const BUSINESS_TYPES: BizType[] = [
   t("car_wash", "Car wash & detailing", "auto", [amenity("car_wash")], ["car wash", "auto detailing"], ["detailing"]),
   t("motorcycle", "Motorcycles & powersports", "auto", [shop("motorcycle", "motorcycle_repair", "atv")], ["motorcycle dealer"]),
   t("car_rental", "Car rental", "auto", [amenity("car_rental")], ["car rental"]),
+  // Owner-run auto niches (Oct 2026 audit brief): high-ticket, rarely with a good website.
+  t("mobile_mechanic", "Mobile mechanics", "auto", [], ["mobile mechanic"], ["mobile mechanic", "mobile auto repair", "mobile diesel"]),
+  t("diesel_repair", "Diesel & fleet repair", "auto", [], ["diesel repair shop", "fleet repair service"], ["diesel", "fleet"]),
+  t("ceramic_coating", "Ceramic coating & PPF", "auto", [], ["ceramic coating", "paint protection film"], ["ceramic", "ppf", "paint protection"]),
 
   // Professional services
   t("lawyer", "Law firms", "professional", [office("lawyer", "notary")], ["law firm"]),
@@ -189,6 +193,20 @@ export const BUSINESS_TYPES: BizType[] = [
   t("tailor", "Tailors & shoe repair", "trades", [craft("tailor", "shoemaker", "dressmaker"), shop("tailor", "shoe_repair")], ["tailor"]),
   t("metalwork", "Metalwork, glass & stone", "trades", [craft("metal_construction", "welder", "glaziery", "window_construction", "stonemason")], ["welding shop"]),
   t("repair", "Electronics & appliance repair", "trades", [craft("electronics_repair", "computer_repair"), shop("repair")], ["phone repair"]),
+  // Home-service trades (Oct 2026 audit brief): owner-run, local, and they live on Google Maps.
+  t("garage_door", "Garage door repair", "trades", [], ["garage door repair"], ["garage door", "overhead door"]),
+  t("concrete", "Concrete & flatwork", "trades", [], ["concrete contractor"], ["concrete", "flatwork", "cement"]),
+  t("fencing", "Fencing", "trades", [], ["fence contractor"], ["fence", "fencing"]),
+  t("tree_service", "Tree service", "trades", [], ["tree service"], ["tree service", "tree care", "arborist", "stump"]),
+  t("irrigation", "Sprinkler & irrigation repair", "trades", [], ["sprinkler repair", "irrigation contractor"], ["sprinkler", "irrigation"]),
+  t("pest_control", "Pest control", "trades", [craft("pest_control"), shop("pest_control")], ["pest control service"], ["pest", "exterminat", "termite"]),
+  t("window_cleaning", "Window cleaning & pressure washing", "trades", [], ["window cleaning service", "pressure washing service"], ["window clean", "pressure wash", "power wash", "soft wash"]),
+  t("gutters", "Gutters", "trades", [], ["gutter installation"], ["gutter"]),
+  t("handyman", "Handyman", "trades", [craft("handyman")], ["handyman"], ["handyman", "handy man"]),
+  t("junk_removal", "Junk removal", "trades", [], ["junk removal service"], ["junk", "haul away", "hauling"]),
+  t("epoxy_floors", "Epoxy floor coatings", "trades", [], ["epoxy flooring contractor"], ["epoxy", "garage floor"]),
+  t("carpet_cleaning", "Carpet & upholstery cleaning", "trades", [craft("carpet_cleaner")], ["carpet cleaning service", "upholstery cleaning"], ["carpet", "upholstery"]),
+  t("septic", "Septic & excavation", "trades", [], ["septic service", "excavation contractor"], ["septic", "excavat"]),
 
   // Hotels & travel
   t("hotel", "Hotels & motels", "hospitality", [tourism("hotel", "motel")], ["hotel"]),

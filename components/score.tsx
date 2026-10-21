@@ -82,7 +82,7 @@ export function ScoreMeter({ label, value, max, sub, tone }: { label: string; va
   );
 }
 
-const SITE_TONE: Record<string, Tone> = { none: "gray", social: "blue", directory: "blue", down: "red", parked: "red", blocked: "amber" };
+const SITE_TONE: Record<string, Tone> = { none: "gray", social: "blue", directory: "blue", down: "red", parked: "red", blocked: "amber", unlinked: "amber", possible: "gray" };
 const SITE_HINT: Record<string, string> = {
   none: "No website of their own",
   social: "Their only web presence is a social or listing page: a different pitch from no website",
@@ -90,6 +90,8 @@ const SITE_HINT: Record<string, string> = {
   down: "Their site didn't load on any address",
   parked: "The domain shows a parked or expired page",
   blocked: "Their site blocked, outlasted or failed our check (common on corporate sites): open it yourself before the call",
+  unlinked: "They have a website, but their Google profile doesn't link it: linking it is a quick visibility win",
+  possible: "No website on Google, but a site with their name exists: we couldn't confirm it's theirs. Ask on the call",
 };
 
 /** One website status everywhere: No site · Facebook only · Domain lapsed · Site down · Parked · Couldn't check. */

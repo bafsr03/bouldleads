@@ -36,6 +36,7 @@ type Row = {
   call_attempts: number;
   callback_at: number | null;
   warm_tries: number;
+  audited_at: number | null;
   ask_for: string | null;
   social_url: string | null;
   last_note: string | null;
@@ -255,6 +256,11 @@ function CallsInner() {
                       </span>
                     )}
                     {fu && <span className="text-sky-700 dark:text-sky-400">{fu}</span>}
+                    {!!nowMs && !!r.audited_at && nowMs - r.audited_at > 90 * 86_400_000 && (
+                      <span className="text-amber-700 dark:text-amber-400" title="Research is over 3 months old: it refreshes on its own, a few leads a day">
+                        audit {Math.round((nowMs - r.audited_at) / (30 * 86_400_000))} months old
+                      </span>
+                    )}
                   </div>
                   {r.last_note && <p className="mt-1 text-xs text-foreground/80">“{r.last_note}”</p>}
                 </div>

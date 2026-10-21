@@ -110,7 +110,7 @@ function auditVars(b: BusinessRow): Partial<MergeVars> {
     const a = JSON.parse(b.audit) as AuditResult;
     const g = a.inputs.google;
     return {
-      audit_issue: a.findings[0]?.email.replace(/\{\{\s*business_name\s*\}\}/g, b.name) ?? null,
+      audit_issue: a.findings.find((f) => f.email)?.email.replace(/\{\{\s*business_name\s*\}\}/g, b.name) ?? null,
       rating: g.rating ? g.rating.toFixed(1) : null,
       review_count: g.found ? String(g.reviewCount ?? 0) : null,
       map_rank: g.rank ? `#${g.rank}` : null,

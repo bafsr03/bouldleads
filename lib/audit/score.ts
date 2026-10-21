@@ -56,6 +56,8 @@ export type BusinessFacts = {
   chainReason?: string | null; // "Chain or franchise (Tractor Supply)", "Toll-free main number…" (see discovery/fit.ts)
   nonFit?: string | null; // "Not a fit: a gas station"
   socialUrl?: string | null; // the Facebook / Instagram / Yelp page Google lists as their website
+  unlinkedSite?: boolean; // `website` is a site we found that their Google profile doesn't link
+  possibleSite?: string | null; // a site that may be theirs (couldn't confirm): "check it"
 };
 
 export type ManualAnswers = { checks?: Record<string, "pass" | "fail">; notes?: string };
@@ -82,7 +84,7 @@ export type AuditResult = {
 };
 
 export type PitchKey = "website" | "visibility" | "both" | "corporate" | "solid";
-export type SiteKey = "none" | "social" | "directory" | "down" | "parked" | "blocked" | "unchecked" | "ok";
+export type SiteKey = "none" | "social" | "directory" | "down" | "parked" | "blocked" | "unchecked" | "unlinked" | "possible" | "ok";
 
 export const PITCHES: Record<PitchKey, string> = {
   website: "Website",
@@ -103,15 +105,20 @@ export function socialLabel(url: string | null | undefined): string {
 }
 
 /** The site chip: No site · Facebook only · Down · Parked · Couldn't check · (ok). */
-export function siteState(b: Pick<BusinessFacts, "website" | "socialUrl">, site: SiteFacts | null): { key: SiteKey; label: string } {
-  if (!b.website) return b.socialUrl ? { key: "social", label: socialLabel(b.socialUrl) } : { key: "none", label: "No site" };
+export function siteState(b: Pick<BusinessFacts, "website" | "socialUrl" | "unlinkedSite" | "possibleSite">, site: SiteFacts | null): { key: SiteKey; label: string } {
+  if (!b.website)
+    return b.socialUrl
+      ? { key: "social", label: socialLabel(b.socialUrl) }
+      : b.possibleSite
+        ? { key: "possible", label: "Maybe a site" }
+        : { key: "none", label: "No site" };
   if (!site) return { key: "unchecked", label: "Not checked yet" };
   if (site.socialOnly) return { key: "social", label: socialLabel(site.url ?? b.website) };
   if (site.directory) return { key: "directory", label: socialLabel(site.url ?? b.website) };
   if (site.error === "parked") return { key: "parked", label: "Parked domain" };
   if (site.error === "down") return { key: "down", label: site.cause === "dns" ? "Domain lapsed" : "Site down" };
   if (site.error === "blocked" || site.error === "script" || !site.reachable) return { key: "blocked", label: "Couldn't check" };
-  return { key: "ok", label: "Has a site" };
+  return b.unlinkedSite ? { key: "unlinked", label: "Site not on Google" } : { key: "ok", label: "Has a site" };
 }
 
 // ---------- Visibility: playbook stage 2 (20 points) ----------
@@ -410,6 +417,27 @@ function findings(i: AuditInputs, vis: Check[], conv: Check[], hasWebsite: boole
       email: "your website wasn't loading when I checked",
     });
   }
+  const host = (u: string) => {
+    try {
+      return new URL(u).hostname.replace(/^www\./, "");
+    } catch {
+      return u;
+    }
+  };
+  if (b.unlinkedSite && b.website && g.found)
+    f.push({
+      id: "unlinked_site",
+      severity: 3,
+      say: `They have a website (${host(b.website)}), but their Google profile doesn't link it: people who find them on Maps never see it. Quick win.`,
+      email: `your website (${host(b.website)}) isn't linked from your Google listing`,
+    });
+  if (b.possibleSite)
+    f.push({
+      id: "possible_site",
+      severity: 2,
+      say: `There may be a website at ${host(b.possibleSite)} (we couldn't confirm it's theirs). Ask on the call.`,
+      email: "",
+    });
   if (g.checked && !g.found) f.push({ id: "no_gbp", severity: 3, say: "No Google Business Profile found: invisible on Google Maps.", email: "{{business_name}} doesn't show up on Google Maps" });
   if (v("map_pack").state === "fail" && g.found && g.rankQuery)
     f.push({

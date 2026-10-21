@@ -189,7 +189,16 @@ export async function logCall(
   }
   const staysWarm = callbackAt != null;
   await db.batch([
-    ["INSERT INTO calls (business_id, outcome, note, user, created_at) VALUES (?, ?, ?, ?, ?)", businessId, outcome, opts.note?.trim() || null, opts.user ?? null, t],
+    [
+      `INSERT INTO calls (business_id, outcome, note, user, created_at, pitch)
+       VALUES (?, ?, ?, ?, ?, (SELECT json_extract(audit, '$.pitch.key') FROM businesses WHERE id = ?))`,
+      businessId,
+      outcome,
+      opts.note?.trim() || null,
+      opts.user ?? null,
+      t,
+      businessId,
+    ],
     [
       `UPDATE businesses SET call_outcome = ?, called_at = ?, call_attempts = call_attempts + 1, callback_at = ?, warm_tries = ?,
          dnc = CASE WHEN ? = 'do_not_call' THEN 1 ELSE dnc END, phone_bad = CASE WHEN ? IN ('wrong_number', 'disconnected') THEN 1 ELSE phone_bad END

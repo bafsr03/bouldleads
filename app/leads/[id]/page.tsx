@@ -16,6 +16,10 @@ import { confirmWithOption, toast } from "@/components/feedback";
 import type { AuditResult, Check } from "@/lib/audit/score";
 import { callBrief } from "@/lib/audit/brief";
 
+
+/** Research older than 90 days (the background job re-audits these a few a day). */
+const stale = (at: number | null) => !!at && Date.now() - at > 90 * 86_400_000;
+
 type Lead = {
   id: number;
   name: string;
@@ -44,6 +48,8 @@ type Lead = {
   phone_bad: number;
   ask_for: string | null;
   social_url: string | null;
+  found_site: string | null;
+  found_site_how: string | null;
   warm_tries: number;
   lat: number | null;
   lng: number | null;
@@ -383,6 +389,18 @@ function LeadInner() {
             <Globe size={14} /> {new URL(l.website).hostname.replace(/^www\./, "")}
           </a>
         )}
+        {!l.website && l.found_site && (
+          <a
+            href={l.found_site}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 text-amber-700 hover:text-accent dark:text-amber-400"
+            title={l.found_site_how === "possible" ? "A site with their name: we couldn't confirm it's theirs" : "Their website, found by us: their Google profile doesn't link it"}
+          >
+            <Globe size={14} /> {new URL(l.found_site).hostname.replace(/^www\./, "")}
+            {l.found_site_how === "possible" ? " (maybe theirs)" : " (not on Google)"}
+          </a>
+        )}
         {l.google_maps_url && (
           <a href={l.google_maps_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 hover:text-accent">
             <ExternalLink size={14} /> Google profile
@@ -558,6 +576,9 @@ function LeadInner() {
 
               <p className="text-xs text-muted">
                 Audited {ago(l.audited_at)}. {a.inputs.google.note ?? (a.inputs.google.checked ? "Google data included." : "")}
+                {stale(l.audited_at) && (
+                  <span className="text-amber-700 dark:text-amber-400"> This research is over 3 months old: it refreshes on its own, or press Deep audit now.</span>
+                )}
               </p>
             </div>
           </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import { PITCHES } from "@/lib/audit/score";
 import { ArrowRight, Check } from "lucide-react";
 import Link from "next/link";
 import { BarList } from "@/components/bar-list";
@@ -39,10 +40,12 @@ type Report = {
   totals: { dials: number; answered: number; leads: number };
   byTier: Group[];
   byType: Group[];
+  byPitch: Group[];
   byHour: { hour: number; dials: number; answered: number }[];
   followupSteps: { step: number; sent: number; replied: number }[];
 };
 
+const PITCH_NAME: Record<string, string> = { ...PITCHES, unknown: "Before pitch tags" };
 const TIER_NAME: Record<string, string> = { A: "Tier A", B: "Tier B", C: "Tier C", not_fit: "Not a fit", unscored: "Not audited" };
 
 function ResultsTable({ rows, name }: { rows: Group[]; name: (k: string) => string }) {
@@ -140,6 +143,11 @@ export default function Overview() {
             <h2 className="font-semibold">Calls by business type</h2>
             <p className="mb-3 text-xs text-muted">Which industries pick up and book.</p>
             <ResultsTable rows={report.byType} name={(k) => k} />
+          </Card>
+          <Card>
+            <h2 className="font-semibold">Calls by pitch</h2>
+            <p className="mb-3 text-xs text-muted">Which pitch books meetings: website, visibility or both. Recorded on each call.</p>
+            <ResultsTable rows={report.byPitch ?? []} name={(k) => PITCH_NAME[k] ?? k} />
           </Card>
           <Card>
             <h2 className="font-semibold">Answer rate by hour</h2>

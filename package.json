@@ -12,7 +12,8 @@
     "hash-password": "tsx scripts/hash-password.ts",
     "copy-to-hosted": "tsx scripts/copy-to-hosted.ts",
     "verify-profiles": "tsx scripts/verify-google-profiles.ts",
-    "recheck": "tsx scripts/recheck.ts"
+    "recheck": "tsx scripts/recheck.ts",
+    "dedupe": "tsx scripts/dedupe.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",

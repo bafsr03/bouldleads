@@ -56,8 +56,8 @@ const NON_FIT: { what: string; gtypes: string[]; label?: RegExp; name?: RegExp; 
   { what: "a gas station", gtypes: ["gas_station", "truck_stop"], label: /\b(gas station|fuel|truck stop|travel (center|plaza))\b/, name: /\b(travel (center|plaza)|truck stop|fuel stop)\b/ },
   { what: "a convenience store", gtypes: ["convenience_store"], label: /\bconvenience store\b/ },
   { what: "a casino", gtypes: ["casino"], label: /\bcasino\b/, name: /\bcasino\b/ },
-  { what: "a hotel or lodging", gtypes: ["lodging", "hotel", "motel", "resort_hotel", "extended_stay_hotel", "inn", "hostel"], label: /\b(hotel|motel|lodging|resort|hostel)\b/, allow: ["hotel", "guest_house", "hostel"] },
-  { what: "an RV park or campground", gtypes: ["rv_park", "campground", "camping_cabin"], label: /\b(rv park|campground)\b/, name: /\b(rv park|campground)\b/, allow: ["camping"] },
+  { what: "a hotel or lodging", gtypes: ["lodging", "hotel", "motel", "resort_hotel", "extended_stay_hotel", "inn", "hostel"], label: /\b(hotel|motel|lodging|resort|hostel)\b/, allow: ["hotel", "guest_house"] },
+  { what: "an RV park or campground", gtypes: ["rv_park", "campground", "camping_cabin"], label: /\b(rv park|campground)\b/, name: /\b(rv park|campground)\b/, allow: ["vacation_rental"] },
   { what: "parking or storage", gtypes: ["parking", "parking_lot", "parking_garage", "storage"], label: /\b(parking|self storage|storage facility)\b/, name: /\b(self storage|storage units?|mini storage)\b/, allow: ["storage"] },
   { what: "an EV charging station", gtypes: ["electric_vehicle_charging_station"], label: /\bcharging station\b/, name: /\b(supercharger|ev charging)\b/ },
   { what: "a car rental", gtypes: ["car_rental", "truck_rental"], label: /\b(car|truck) rental\b/, allow: ["car_rental"] },
@@ -66,7 +66,7 @@ const NON_FIT: { what: string; gtypes: string[]; label?: RegExp; name?: RegExp; 
   { what: "a pawn shop", gtypes: ["pawn_shop"], label: /\bpawn\b/, name: /\bpawn\b/, allow: ["second_hand"] },
   { what: "an auction house", gtypes: ["auction_house"], label: /\bauction\b/, name: /\bauction\b/ },
   { what: "a park", gtypes: ["park", "state_park", "national_park", "tourist_attraction"], label: /^(park|state park|national park|tourist attraction|historical landmark)$/, name: /\b(state park|ranch historic)\b/ },
-  { what: "an event venue", gtypes: ["event_venue", "concert_hall", "performing_arts_theater"], label: /\b(event venue|concert hall|performing arts)\b/, allow: ["events_venue", "theatre"] },
+  { what: "an event venue", gtypes: ["event_venue", "concert_hall", "performing_arts_theater"], label: /\b(event venue|concert hall|performing arts)\b/, allow: ["event_venue", "theatre"] },
   { what: "a government office", gtypes: ["local_government_office", "government_office", "city_hall"], label: /\bgovernment\b/ },
 ];
 

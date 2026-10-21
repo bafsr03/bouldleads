@@ -3,7 +3,8 @@ import { db } from "../lib/db";
 import { checkSite, type SiteFacts } from "../lib/audit/site";
 import { rescore, type AuditRow } from "../lib/audit/run-audit";
 import { CHAIN_BY_NAME_SQL } from "../lib/discovery/run-search";
-import { formatPhone } from "../lib/discovery/fit";
+import { chainReason, formatPhone } from "../lib/discovery/fit";
+import { findSite } from "../lib/audit/find-site";
 import { normalizeWebsite, socialUrl } from "../lib/discovery/overpass";
 
 // Usage: npm run recheck -- [--dry-run] [--no-sites]
@@ -13,13 +14,15 @@ import { normalizeWebsite, socialUrl } from "../lib/discovery/overpass";
 //   3. Chains: the same name at 3+ locations anywhere in the database
 //   4. Websites that were "down", "blocked" or social are checked again with the new rules
 //      (every address variant; "couldn't check" vs. really down). Free: no Google calls.
-//   5. Every audited lead re-scored from its stored research (chains, non-fits, pitch type, new priority)
+//   5. Google-listed leads with no website: look for a site they never linked (free; --no-find skips)
+//   6. Every audited lead re-scored from its stored research (chains, non-fits, pitch type, new priority)
 // Prints the top 30 by priority before and after.
 // Hosted: vercel env pull .env.local, then: set -a; source .env.local; set +a; npm run recheck
 
 const args = process.argv.slice(2);
 const dry = args.includes("--dry-run");
 const sites = !args.includes("--no-sites");
+const find = !args.includes("--no-find");
 
 const kind = (x: SiteFacts | null | undefined) =>
   !x ? "not checked" : x.socialOnly ? "social" : x.directory ? "directory" : x.error === "blocked" || x.error === "script" ? "couldn't check" : (x.error ?? "ok");
@@ -33,7 +36,7 @@ const top = async () =>
 
 async function main() {
   const before = await top();
-  const out = { phones: 0, social: 0, chains: 0, sites: 0, siteChanged: 0, rescored: 0 };
+  const out = { phones: 0, social: 0, chains: 0, sites: 0, siteChanged: 0, found: 0, possible: 0, rescored: 0 };
 
   // 1 + 2: phones and social links
   const rows = await db.all<{ id: number; phone: string | null; website: string | null; country_code: string | null; social_url: string | null }>(
@@ -86,7 +89,33 @@ async function main() {
     );
   }
 
-  // 5: re-score everyone from stored research
+  // 5: sites Google doesn't link
+  if (find) {
+    const todo = await db.all<Row>(
+      "SELECT * FROM businesses WHERE google_place_id IS NOT NULL AND website IS NULL AND social_url IS NULL AND site_search_at IS NULL AND chain = 0",
+    );
+    console.log(`\nLooking for unlinked websites for ${todo.length} leads with no site on Google…`);
+    const limit = pLimit(6);
+    await Promise.all(
+      todo.map((r) =>
+        limit(async () => {
+          if (chainReason(r)) return;
+          const f = await findSite({ name: r.name, city: r.city, phone: r.phone }).catch(() => null);
+          if (f) {
+            console.log(`  found   #${r.id} ${r.name}: ${f.url} (${f.how === "possible" ? "maybe theirs" : `confirmed by ${f.how}`})`);
+            if (f.how === "possible") out.possible++;
+            else {
+              out.found++;
+              fresh.set(r.id, await checkSite(f.url, { pageSpeed: false }).catch(() => null));
+            }
+          }
+          if (!dry) await db.run("UPDATE businesses SET found_site = ?, found_site_how = ?, site_search_at = ? WHERE id = ?", f?.url ?? null, f?.how ?? null, Date.now(), r.id);
+        }),
+      ),
+    );
+  }
+
+  // 6: re-score everyone from stored research
   if (!dry) {
     const ids = await db.all<{ id: number }>("SELECT id FROM businesses WHERE audit IS NOT NULL");
     for (const { id } of ids) {
@@ -107,7 +136,7 @@ async function main() {
   const dropped = before.filter((b) => !after.some((a) => a.id === b.id));
   if (dropped.length) console.log(`\nLeft the top 30: ${dropped.map((d) => `${d.name} (${d.priority})`).join(", ")}`);
   console.log(
-    `\n${dry ? "Dry run: nothing written. " : ""}Phones reformatted ${out.phones}, social links kept ${out.social}, chains flagged ${out.chains}, websites re-checked ${out.sites} (${out.siteChanged} changed), re-scored ${out.rescored}.`,
+    `\n${dry ? "Dry run: nothing written. " : ""}Phones reformatted ${out.phones}, social links kept ${out.social}, chains flagged ${out.chains}, websites re-checked ${out.sites} (${out.siteChanged} changed), unlinked sites found ${out.found} (+${out.possible} maybe), re-scored ${out.rescored}.`,
   );
 }
 

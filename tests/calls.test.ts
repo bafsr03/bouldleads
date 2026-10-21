@@ -309,4 +309,11 @@ describe("warm leads", () => {
     const sched = await calls.callbackSchedule("America/Denver", t);
     expect(sched.find((r) => r.id === 153)).toMatchObject({ call_outcome: "bad_timing", marked_at: t - 86_400_000 });
   });
+
+  it("record the lead's pitch type on each call, for the 'which pitch books' report", async () => {
+    await lead(154, null);
+    await db.run(`UPDATE businesses SET audit = '{"pitch":{"key":"visibility","label":"Visibility"}}' WHERE id = 154`);
+    await calls.logCall(154, "audit_booked");
+    expect(await db.get("SELECT outcome, pitch FROM calls WHERE business_id = 154")).toEqual({ outcome: "audit_booked", pitch: "visibility" });
+  });
 });

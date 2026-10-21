@@ -16,7 +16,7 @@ export async function GET(req: Request) {
     db.count(`SELECT COUNT(*) FROM businesses ${where}`, ...params),
     db.all<{ audit: string | null }>(
       `SELECT id, search_id, name, category, category_confirmed, address, city, country_code, lat, lng, phone, website, email, email_source, email_confidence, status,
-         rating, review_count, google_maps_url, audit_status, visibility_score, conversion_score, priority, tier, audit,
+         rating, review_count, google_maps_url, audit_status, audited_at, visibility_score, conversion_score, priority, tier, audit,
          call_outcome, called_at, call_attempts, callback_at, warm_tries, ask_for, social_url, chain, dnc, phone_bad, ${STAGE_SQL} AS stage,
          (SELECT c.note FROM calls c WHERE c.business_id = businesses.id AND c.note IS NOT NULL AND c.note != '' ORDER BY c.created_at DESC LIMIT 1) AS last_note,
          (SELECT cl.step || '/' || json_array_length(c.steps) || '/' || cl.state || '/' || cl.next_send_at

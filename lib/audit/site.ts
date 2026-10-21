@@ -330,7 +330,7 @@ function softRedirect(html: string, base: string): string | null {
   }
 }
 
-async function fetchHome(url: string, timeoutMs = 15000): Promise<Fetched> {
+export async function fetchHome(url: string, timeoutMs = 15000): Promise<Fetched> {
   try {
     const res = await fetchWithTimeout(url, {
       timeoutMs,

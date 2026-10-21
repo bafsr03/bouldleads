@@ -399,3 +399,19 @@ describe("site status", () => {
     expect(a.site?.key).toBe("directory");
   });
 });
+
+describe("sites Google doesn't link", () => {
+  it("scores a found site as theirs and pitches linking it", () => {
+    const a = scoreAudit(inputs({ business: { ...inputs().business, unlinkedSite: true } }));
+    expect(a.site).toEqual({ key: "unlinked", label: "Site not on Google" });
+    expect(a.findings[0].id).toBe("unlinked_site");
+    expect(a.conversion.measured).toBe(true);
+  });
+
+  it("mentions a possible site without scoring it", () => {
+    const a = scoreAudit(inputs({ site: null, business: { ...inputs().business, website: null, possibleSite: "https://www.eatonmetal.com/" } }));
+    expect(a.site?.key).toBe("possible");
+    expect(a.conversion.hasWebsite).toBe(false);
+    expect(a.findings.find((f) => f.id === "possible_site")!.say).toMatch(/eatonmetal\.com/);
+  });
+});
