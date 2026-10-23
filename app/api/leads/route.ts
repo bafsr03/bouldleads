@@ -1,6 +1,7 @@
 import { connection } from "next/server";
 import { db, marks } from "@/lib/db";
 import { bad, body, int, json } from "@/lib/api";
+import { checkSummary } from "@/lib/check/summary";
 import { auditSummary, deleteLeads, filterFromUrl, leadListWhere, leadOrder, resolveIds } from "@/lib/leads";
 import { STAGE_SQL, startFollowup } from "@/lib/calls";
 import tzlookup from "tz-lookup";
@@ -14,10 +15,11 @@ export async function GET(req: Request) {
   const { where, params } = leadListWhere(f);
   const [total, rows] = await Promise.all([
     db.count(`SELECT COUNT(*) FROM businesses ${where}`, ...params),
-    db.all<{ audit: string | null }>(
+    db.all<{ audit: string | null; top_check: string | null }>(
       `SELECT id, search_id, name, category, category_confirmed, address, city, country_code, lat, lng, phone, website, email, email_source, email_confidence, status,
          rating, review_count, google_maps_url, audit_status, audited_at, visibility_score, conversion_score, priority, tier, audit,
          call_outcome, called_at, call_attempts, callback_at, warm_tries, ask_for, social_url, chain, dnc, phone_bad, ${STAGE_SQL} AS stage,
+         check_case, check_priority, check_opened_at, check_opens, lead_source, top_check,
          (SELECT c.note FROM calls c WHERE c.business_id = businesses.id AND c.note IS NOT NULL AND c.note != '' ORDER BY c.created_at DESC LIMIT 1) AS last_note,
          (SELECT cl.step || '/' || json_array_length(c.steps) || '/' || cl.state || '/' || cl.next_send_at
             FROM campaign_leads cl JOIN campaigns c ON c.id = cl.campaign_id
@@ -32,7 +34,7 @@ export async function GET(req: Request) {
     total,
     page,
     pageSize: PAGE,
-    rows: rows.map(({ audit, ...r }) => {
+    rows: rows.map(({ audit, top_check, ...r }) => {
       const fu = (r as { followup: string | null }).followup?.split("/");
       const { lat, lng } = r as { lat: number | null; lng: number | null };
       let tz: string | null = null;
@@ -43,6 +45,7 @@ export async function GET(req: Request) {
         ...r,
         tz, // the business's time zone, for "local time" on the call list
         ...auditSummary(audit),
+        ...checkSummary(top_check as string | null),
         followup: fu ? { step: Number(fu[0]), steps: Number(fu[1]), state: fu[2], nextSendAt: Number(fu[3]) || null } : null,
       };
     }),

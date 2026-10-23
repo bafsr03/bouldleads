@@ -15,6 +15,7 @@ import { useEmailOn } from "@/components/use-flags";
 import { confirmWithOption, toast } from "@/components/feedback";
 import type { AuditResult, Check } from "@/lib/audit/score";
 import { callBrief } from "@/lib/audit/brief";
+import { TopCheckPanel, type CheckLead } from "@/components/top-check";
 
 
 /** Research older than 90 days (the background job re-audits these a few a day). */
@@ -39,7 +40,14 @@ type Lead = {
   audit_status: string | null;
   audited_at: number | null;
   audit: AuditResult | null;
-  audit_manual: { checks?: Record<string, "pass" | "fail">; notes?: string };
+  audit_manual: { checks?: Record<string, "pass" | "fail">; notes?: string; lastMonthLeads?: string };
+  top_check: CheckLead["top_check"];
+  check_query: string | null;
+  check_slug: string | null;
+  check_opened_at: number | null;
+  check_opens: number;
+  lead_source: string | null;
+  lead_contact: CheckLead["lead_contact"];
   call_outcome: string | null;
   called_at: number | null;
   call_attempts: number;
@@ -413,6 +421,8 @@ function LeadInner() {
         )}
       </div>
 
+      <TopCheckPanel lead={l} onChange={reload} />
+
       {!a && (
         <div className="grid gap-4 lg:grid-cols-5">
           <div className="lg:col-span-3">
@@ -443,7 +453,7 @@ function LeadInner() {
                 sub={
                   a.visibility.open
                     ? `${20 - a.visibility.open} of 20 pts checked · ${a.visibility.open} to check on the call (not counted against them)`
-                    : "All 12 checks answered"
+                    : "All checks answered"
                 }
               />
             </Card>
@@ -504,7 +514,7 @@ function LeadInner() {
               <Card>
                 <h2 className="font-semibold">Visibility audit</h2>
                 <p className="mb-2 text-xs text-muted">
-                  The playbook&apos;s 12 checks. Answer the open ones on the call with Yes / No: the score, verdict and tier update instantly.
+                  The visibility checks (spec v2: measured against the top 3). Answer the open ones on the call with Yes / No: the score, verdict and tier update instantly.
                 </p>
                 {visGroups.map((g) => (
                   <div key={g} className="mt-3">

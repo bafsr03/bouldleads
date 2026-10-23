@@ -36,7 +36,7 @@ const STEPS = [
   {
     icon: Mail,
     title: () => "The call brief",
-    body: "Open any lead (Full audit & call brief) before you dial: scores, talking points, a 12-point checklist you can answer live with Yes / No, notes, and every call and email so far. Your notes and results are saved with your name and show up for the whole team instantly.",
+    body: "Open any lead (Full audit & call brief) before you dial: scores, talking points, the top-3 check (where they rank, the top 3, the one thing to say), a checklist you can answer live with Yes / No, notes, and every call and email so far. Your notes and results are saved with your name and show up for the whole team instantly.",
     href: null,
     cta: null,
   },

@@ -2,6 +2,7 @@ import { Star } from "lucide-react";
 import { Badge, cx, type Tone } from "./ui";
 import { stageLabel } from "@/lib/call-outcomes";
 import { PITCHES, socialLabel } from "@/lib/audit/score";
+import { CASES, SKIP, type CaseKey } from "@/lib/check/diagnose";
 
 export const TIER_LABEL: Record<string, string> = { A: "A · call first", B: "B · good lead", C: "C · low priority", not_fit: "Not a fit" };
 
@@ -124,4 +125,27 @@ export function PitchBadge({ pitch }: { pitch: string | null | undefined }) {
       <Badge tone={PITCH_TONE[pitch]}>{PITCHES[pitch as keyof typeof PITCHES]}</Badge>
     </span>
   );
+}
+
+const CALL_TONE: Record<number, Tone> = { 1: "green", 2: "blue", 3: "yellow", 4: "gray", [SKIP]: "red" };
+const CALL_SHORT: Record<number, string> = { 1: "Call 1st", 2: "Call 2nd", 3: "Call 3rd", 4: "Call last", [SKIP]: "Skip" };
+
+/** The top-3 check's call order and case: "Call 1st · E Reviews" (Competitor Check spec v2 §3.4). */
+export function CheckBadge({ priority, kase, rank }: { priority: number | null; kase: string | null; rank?: number | null }) {
+  if (priority == null || !kase) return null;
+  const title = `Case ${kase}: ${CASES[kase as CaseKey] ?? ""}${rank ? ` · around #${rank}` : ""}`;
+  return (
+    <span title={title}>
+      <Badge tone={CALL_TONE[priority] ?? "gray"}>
+        {CALL_SHORT[priority] ?? `Call ${priority}`} · {kase} {CASES[kase as CaseKey]}
+      </Badge>
+    </span>
+  );
+}
+
+/** Where an inbound lead came from: they asked for a check, so they're never filtered out. */
+export function SourceBadge({ source }: { source: string | null | undefined }) {
+  if (source === "site") return <Badge tone="orange">Site request</Badge>;
+  if (source === "meta") return <Badge tone="orange">Meta ad</Badge>;
+  return null;
 }

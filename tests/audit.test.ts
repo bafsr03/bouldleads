@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { analyzeHtml, type SiteFacts } from "@/lib/audit/site";
-import { keywordsFor, scoreAudit, type AuditInputs, type GoogleFacts } from "@/lib/audit/score";
+import { VISIBILITY_CHECKS, keywordsFor, scoreAudit, type AuditInputs, type GoogleFacts } from "@/lib/audit/score";
 
 const GOOD_SITE = `<!doctype html><html><head>
 <title>Smoke Shop in Austin | Cloud Nine Smoke</title>
@@ -77,8 +77,8 @@ describe("scoreAudit", () => {
   it("scores a strong business high on both sides", () => {
     const a = scoreAudit(inputs());
     expect(a.conversion.score).toBeGreaterThanOrEqual(90);
-    // reviews 3 + map pack 3 + category 2 + branded 2 + name 1 + nap 1 = 12 (directories: Google, FB, Yelp, IG = 4 → +2)
-    expect(a.visibility.score).toBe(14);
+    // reviews 4 + map pack 5 + category 3 + branded 3 = 15 (verified, one market and leads are asked on the call)
+    expect(a.visibility.score).toBe(15);
     // The site already converts: never pitch a rebuild.
     expect(a.verdict.key).toBe("visibility_program");
     expect(a.verdict.provisional).toBe(true);
@@ -194,24 +194,16 @@ describe("deep Google profile", () => {
     ...p,
   });
 
-  it("passes an active, complete profile", () => {
+  it("no longer scores profile activity (spec v2 cut it)", () => {
     const r = scoreAudit(inputs({ google: google({ deep: deep() }) }));
-    const c = r.visibility.checks.find((x) => x.id === "gbp_fresh")!;
-    expect(c).toMatchObject({ state: "pass", method: "auto" });
-    expect(c.evidence).toMatch(/10\+ photos, hours set/);
+    expect(r.visibility.checks.find((x) => x.id === "gbp_fresh")).toBeUndefined();
   });
 
   it("turns stale reviews, few photos and missing hours into talking points", () => {
     const r = scoreAudit(inputs({ google: google({ deep: deep({ newestReviewDays: 300, photos: 2, hours: false }) }) }));
-    expect(r.visibility.checks.find((x) => x.id === "gbp_fresh")).toMatchObject({ state: "fail" });
     const ids = r.findings.map((f) => f.id);
     expect(ids).toEqual(expect.arrayContaining(["stale_reviews", "no_hours", "few_photos"]));
     expect(r.findings.find((f) => f.id === "stale_reviews")!.say).toMatch(/10 months ago/);
-  });
-
-  it("leaves the check for the call when there's no deep data", () => {
-    const r = scoreAudit(inputs());
-    expect(r.visibility.checks.find((x) => x.id === "gbp_fresh")).toMatchObject({ state: "unknown", method: "manual" });
   });
 
   it("reads Google's place details into facts", async () => {
@@ -281,13 +273,30 @@ describe("conversion paths we used to miss", () => {
   });
 });
 
-describe("name says what they do", () => {
-  it("matches word stems", () => {
-    const k = keywordsFor(["Dentists & orthodontists", "Dentist", "dentist"]);
-    const r = scoreAudit(inputs({ keywords: k, business: { ...inputs().business, name: "UrgentCare Dental Manchester", countryCode: "GB" } }));
-    expect(r.visibility.checks.find((c) => c.id === "name_says")!.state).toBe("pass");
-    const r2 = scoreAudit(inputs({ keywords: k, business: { ...inputs().business, name: "Smile Stylist", countryCode: "GB" } }));
-    expect(r2.visibility.checks.find((c) => c.id === "name_says")!.state).toBe("fail");
+describe("top-3 comparison (spec v2 §3.2)", () => {
+  it("keeps the score out of 20 with the cut checks gone", () => {
+    expect(VISIBILITY_CHECKS.reduce((n, c) => n + c.points, 0)).toBe(20);
+    expect(VISIBILITY_CHECKS.map((c) => c.id)).not.toEqual(expect.arrayContaining(["gbp_fresh", "directories", "name_says", "nap", "busy_season"]));
+  });
+
+  it("measures reviews against the top 3 instead of a flat 20", () => {
+    const top3 = { minReviews: 21, maxReviews: 31, categoryMatch: true, category: "Website designer" };
+    const behind = scoreAudit(inputs({ google: google({ reviewCount: 18, rating: 5, top3 }) }));
+    expect(behind.visibility.checks.find((c) => c.id === "gbp_reviews")).toMatchObject({ state: "fail" });
+    expect(behind.visibility.checks.find((c) => c.id === "gbp_reviews")!.evidence).toMatch(/top 3 have 21–31/);
+    const level = scoreAudit(inputs({ google: google({ reviewCount: 12, rating: 4.8, top3: { ...top3, minReviews: 10 } }) }));
+    expect(level.visibility.checks.find((c) => c.id === "gbp_reviews")!.state).toBe("pass");
+  });
+
+  it("fails the category when the top 3 are listed as something else", () => {
+    const top3 = { minReviews: 5, maxReviews: 9, categoryMatch: false, category: "Vaporizer store" };
+    const r = scoreAudit(inputs({ google: google({ top3 }) }));
+    expect(r.visibility.checks.find((c) => c.id === "gbp_category")).toMatchObject({ state: "fail", method: "auto" });
+  });
+
+  it("flags a lead far from the city it's searched in", () => {
+    expect(scoreAudit(inputs({ google: google({ marketKm: 4 }) })).visibility.checks.find((c) => c.id === "one_market")!.state).toBe("pass");
+    expect(scoreAudit(inputs({ google: google({ marketKm: 32 }) })).visibility.checks.find((c) => c.id === "one_market")!.state).toBe("fail");
   });
 });
 

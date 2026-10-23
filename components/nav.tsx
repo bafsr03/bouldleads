@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarClock, CircleHelp, Inbox, LayoutDashboard, LogOut, Map, MailCheck, MapPin, Megaphone, PhoneCall, Settings, Users } from "lucide-react";
+import { CalendarClock, CircleHelp, FileUp, Inbox, LayoutDashboard, LogOut, Map, MailCheck, MapPin, Megaphone, PhoneCall, Settings, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ago, cx } from "./ui";
@@ -18,6 +18,7 @@ const LINKS = [
   { href: "/leads", label: "Leads", icon: Users },
   { href: "/places", label: "Places", icon: Map },
   { href: "/search", label: "Find leads", icon: MapPin },
+  { href: "/import", label: "Meta leads", icon: FileUp },
   { href: "/campaigns", label: "Emails", icon: Megaphone },
   { href: "/replies", label: "Replies", icon: MailCheck },
   { href: "/inboxes", label: "Inboxes", icon: Inbox },

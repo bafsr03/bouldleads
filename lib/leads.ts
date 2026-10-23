@@ -66,7 +66,9 @@ export function leadListWhere(f: LeadListFilter) {
 
 export const leadOrder = (f: LeadListFilter) =>
   ({
-    priority: "ORDER BY priority IS NULL, priority DESC, id DESC",
+    // Competitor Check spec v2 §3.4: call order from the top-3 check first (1 one clear gap … 4 most
+    // work, unchecked next, skip last), year-round trades before seasonal ones, then the audit priority.
+    priority: "ORDER BY COALESCE(check_priority, 5), seasonal, priority IS NULL, priority DESC, id DESC",
     callback: "ORDER BY callback_at IS NULL, callback_at, priority DESC",
     called: "ORDER BY called_at DESC, id DESC",
   })[f.sort ?? ""] ?? "ORDER BY id DESC";

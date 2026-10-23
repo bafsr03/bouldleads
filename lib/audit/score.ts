@@ -3,7 +3,7 @@ import type { DeepFacts } from "../discovery/google-api";
 
 // The Bould Golden Formula, as code.  Leads = Visibility × Conversion.
 //
-// Visibility: the playbook's stage-2 audit, 12 checks worth 20 points. Each check is
+// Visibility: the playbook's stage-2 audit, 7 checks worth 20 points (spec v2, see VISIBILITY_CHECKS). Each check is
 //   auto       measured from Google / the website
 //   estimated  a reasonable proxy; confirm it on the call
 //   manual     only the owner or a person can answer it
@@ -39,6 +39,10 @@ export type GoogleFacts = {
   brandedTop: boolean | null; // their own name search shows them first
   note?: string | null;
   deep?: DeepFacts | null; // reviews/photos/hours from the deep audit (top leads)
+  /** From the top-3 check (lib/check): how the top 3 for rankQuery compare. */
+  top3?: { minReviews: number | null; maxReviews: number | null; categoryMatch: boolean; category: string | null } | null;
+  /** Distance from the business to the centre of the city it's searched in (top-3 check). */
+  marketKm?: number | null;
 };
 
 export type BusinessFacts = {
@@ -60,7 +64,7 @@ export type BusinessFacts = {
   possibleSite?: string | null; // a site that may be theirs (couldn't confirm): "check it"
 };
 
-export type ManualAnswers = { checks?: Record<string, "pass" | "fail">; notes?: string };
+export type ManualAnswers = { checks?: Record<string, "pass" | "fail">; notes?: string; lastMonthLeads?: string };
 
 export type AuditInputs = { business: BusinessFacts; site: SiteFacts | null; google: GoogleFacts; keywords: string[]; year: number };
 
@@ -123,19 +127,19 @@ export function siteState(b: Pick<BusinessFacts, "website" | "socialUrl" | "unli
 
 // ---------- Visibility: playbook stage 2 (20 points) ----------
 
+// Competitor Check spec v2 (Oct 22 2026), §3.2: the old twelve checks were kept, replaced or cut.
+// Cut (never showed up as a factor): posted in the last 90 days, 4+ directories, name says what
+// you do. Kept but not scored: year-round work (call order only, lib/check) and name/phone/address
+// everywhere. Reviews and map pack are now measured against the top 3. The points of the cut
+// checks moved to those, so the score is still out of 20 and the verdicts below still apply.
 export const VISIBILITY_CHECKS: { id: string; label: string; group: string; points: number }[] = [
-  { id: "gbp_verified", label: "Google profile verified, owner can add Bould as manager", group: "Google Business Profile", points: 2 },
-  { id: "gbp_category", label: "Primary category matches the main service people search", group: "Google Business Profile", points: 2 },
-  { id: "gbp_reviews", label: "20+ Google reviews at 4.5 stars or higher", group: "Google Business Profile", points: 3 },
-  { id: "gbp_fresh", label: "Profile active and complete (recent reviews, 5+ photos, hours)", group: "Google Business Profile", points: 1 },
-  { id: "map_pack", label: 'Shows in the map pack for "main service + their city"', group: "Search presence", points: 3 },
-  { id: "branded", label: "Owns the search results for their own business name", group: "Search presence", points: 2 },
-  { id: "directories", label: "Listed on 4+ directories (Yelp, BBB, Angi, Facebook, Nextdoor, Apple Maps)", group: "Search presence", points: 2 },
-  { id: "nap", label: "Name, phone, and address identical everywhere", group: "Search presence", points: 1 },
-  { id: "name_says", label: "Business name says what they do", group: "Focus and demand", points: 1 },
-  { id: "one_market", label: "Serves one market that matches the Google profile", group: "Focus and demand", points: 1 },
-  { id: "busy_season", label: "Launch lands before or during their busy season", group: "Focus and demand", points: 1 },
-  { id: "knows_leads", label: "We know their current leads per month and where they come from", group: "Focus and demand", points: 1 },
+  { id: "gbp_verified", label: "Google profile claimed, owner has access (ask on the call)", group: "Google Business Profile", points: 2 },
+  { id: "gbp_category", label: "Primary category matches the top 3's", group: "Google Business Profile", points: 3 },
+  { id: "gbp_reviews", label: "Reviews keep up with the top 3, rating 4.5+", group: "Google Business Profile", points: 4 },
+  { id: "map_pack", label: 'In the top 3 on Google Maps for "service + city"', group: "Search presence", points: 5 },
+  { id: "branded", label: "Branded search: their name's first page is all them (check by hand before the call)", group: "Search presence", points: 3 },
+  { id: "one_market", label: "Serves one clear market (within ~15 km of the city searched)", group: "Focus and demand", points: 2 },
+  { id: "knows_leads", label: "Knows last month's leads (ask on the call: their starting numbers)", group: "Focus and demand", points: 1 },
 ];
 
 /** "3 weeks ago", "8 months ago" */
@@ -164,8 +168,12 @@ function visibility(i: AuditInputs): Check[] {
       ? { state: "fail", method: "auto", evidence: "No Google Business Profile found near this address" }
       : { state: "unknown", method: "manual", evidence: g.found ? "Profile exists; ask the owner if they can add a manager" : googleNote };
 
-  // 2. Category matches the main service
-  if (g.found && b.categoryConfirmed === false)
+  // 2. Category matches the main service: against the top 3's category when the top-3 check ran.
+  if (g.found && g.top3 && g.top3.category)
+    out.gbp_category = g.top3.categoryMatch
+      ? { state: "pass", method: "auto", evidence: `Google category: ${g.type ?? "?"}. Top 3 are listed as ${g.top3.category}` }
+      : { state: "fail", method: "auto", evidence: `Listed as "${g.type ?? "?"}"; the top 3 are listed as "${g.top3.category}"` };
+  else if (g.found && b.categoryConfirmed === false)
     out.gbp_category = {
       state: "unknown",
       method: "manual",
@@ -179,30 +187,19 @@ function visibility(i: AuditInputs): Check[] {
       : { state: "unknown", method: "estimated", evidence: `Google category is "${g.type}". Is that their main service?` };
   } else out.gbp_category = { state: g.checked && !g.found ? "fail" : "unknown", method: g.checked ? "auto" : "manual", evidence: g.found ? "No category on profile" : googleNote };
 
-  // 3. 20+ reviews at 4.5+
+  // 3. Reviews compared to the top 3, rating 4.5+ (no top-3 data: the old 20+ rule).
   if (g.found) {
     const n = g.reviewCount ?? 0;
     const r = g.rating;
+    const min = g.top3?.minReviews;
+    const enough = min != null ? n >= min : n >= 20;
+    const top = min != null ? `; the top 3 have ${min === g.top3!.maxReviews ? min : `${min}–${g.top3!.maxReviews}`}` : "";
     out.gbp_reviews = {
-      state: n >= 20 && (r ?? 0) >= 4.5 ? "pass" : "fail",
+      state: enough && (r ?? 0) >= 4.5 ? "pass" : "fail",
       method: "auto",
-      evidence: n ? `${n} review${n === 1 ? "" : "s"} at ${r?.toFixed(1)}★` : "No Google reviews yet",
+      evidence: n ? `${n} review${n === 1 ? "" : "s"} at ${r?.toFixed(1)}★${top}` : `No Google reviews yet${top}`,
     };
   } else out.gbp_reviews = { state: g.checked ? "fail" : "unknown", method: g.checked ? "auto" : "manual", evidence: g.checked ? "No Google profile" : googleNote };
-
-  // 4. Active and complete profile: from the deep audit when we have it, otherwise check by hand.
-  const d = g.deep;
-  if (g.found && d) {
-    const recent = d.newestReviewDays != null && d.newestReviewDays <= 90;
-    const gaps = [
-      !recent && (d.newestReviewDays == null ? "no reviews to date" : `newest review ${ago(d.newestReviewDays)}`),
-      d.photos < 5 && `${d.photos === 0 ? "no" : `only ${d.photos}`} photo${d.photos === 1 ? "" : "s"}`,
-      !d.hours && "no opening hours",
-    ].filter(Boolean);
-    out.gbp_fresh = gaps.length
-      ? { state: "fail", method: "auto", evidence: `Profile gaps: ${gaps.join(", ")}` }
-      : { state: "pass", method: "auto", evidence: `Newest review ${ago(d.newestReviewDays!)}, ${d.photos >= 10 ? "10+" : d.photos} photos, hours set` };
-  } else out.gbp_fresh = { state: "unknown", method: "manual", evidence: g.found ? "Open the profile and check the newest review, photos and hours (or run a Deep audit)" : googleNote };
 
   // 5. Map pack
   if (g.found && g.rankQuery) {
@@ -231,42 +228,15 @@ function visibility(i: AuditInputs): Check[] {
         ? { state: "unknown", method: "manual", evidence: "Search their exact name on Google" }
         : { state: "fail", method: "estimated", evidence: "No website, so other sites own their name" };
 
-  // 7. Directories: Google + OSM + profiles linked from their website. We don't query the directories
-  // themselves, so fewer than 4 is "check it", never a fail (and unknowns don't count against them).
-  const dirs = new Set<string>(site?.profiles.filter((p) => !["YouTube", "LinkedIn", "X / Twitter", "TikTok"].includes(p)) ?? []);
-  if (g.found) dirs.add("Google Maps");
-  if (b.source === "osm" || b.source === "both") dirs.add("OpenStreetMap / Apple Maps");
-  out.directories = {
-    state: dirs.size >= 4 ? "pass" : "unknown",
-    method: "estimated",
-    evidence: dirs.size ? `Seen on: ${[...dirs].join(", ")}. Check Yelp, BBB and Facebook for the rest` : "No listings linked from their site: check Yelp, BBB and Facebook",
-  };
-
-  // 8. NAP consistency: phone on the website vs. the listing phone.
-  const listing = b.phone?.replace(/\D/g, "").slice(-7);
-  if (listing && listing.length === 7 && site?.phones.length) {
-    const same = site.phones.some((p) => p.endsWith(listing));
-    out.nap = { state: same ? "pass" : "fail", method: "estimated", evidence: same ? "Website phone matches the listing" : `Website shows a different phone than the listing (${b.phone})` };
-  } else out.nap = { state: "unknown", method: "manual", evidence: "Compare name, phone and address on Google, Yelp and Facebook" };
-
-  // 9. Name says what they do
-  const name = norm(b.name);
-  // Match word stems too: "dental" says dentist, "roofing" says roofer, "plumbing" says plumber.
-  const stem = (k: string) => (k.length >= 6 ? k.slice(0, 4) : k);
-  const nameWords = name.split(/[^a-z0-9]+/);
-  const says = i.keywords.find((k) => k.length >= 3 && (name.includes(k) || nameWords.some((w) => w.length >= 4 && w.startsWith(stem(k)))));
-  out.name_says = says
-    ? { state: "pass", method: "auto", evidence: `"${b.name}" includes "${says}"` }
-    : b.chainReason
-      ? { state: "unknown", method: "manual", evidence: "A brand name: this check doesn't apply to a chain" }
-      : english(b.countryCode)
-      ? { state: "fail", method: "auto", evidence: `"${b.name}" doesn't say what they do` }
-      : { state: "unknown", method: "manual", evidence: `Does "${b.name}" say what they do? (automatic check is English-only)` };
-
-  // 10–12: only the owner knows.
-  out.one_market = { state: "unknown", method: "manual", evidence: "Ask which cities they want to drive to / serve" };
-  out.busy_season = { state: "unknown", method: "manual", evidence: "Ask when their busy season starts" };
-  out.knows_leads = { state: "unknown", method: "manual", evidence: "Ask: where do customers come from today, and how many a month?" };
+  // One clear market: flagged when the business is more than ~15 km from the city it's searched in.
+  out.one_market =
+    g.marketKm != null
+      ? g.marketKm <= 15
+        ? { state: "pass", method: "auto", evidence: `${g.marketKm} km from the centre of ${b.city}` }
+        : { state: "fail", method: "auto", evidence: `${g.marketKm} km from the centre of ${b.city}: is that the market they want?` }
+      : { state: "unknown", method: "manual", evidence: "Ask which cities they want to drive to / serve" };
+  // Only the owner knows.
+  out.knows_leads = { state: "unknown", method: "manual", evidence: "Ask: how many leads last month, and where from? (Their starting numbers if they sign)" };
 
   return VISIBILITY_CHECKS.map((c) => ({ ...c, ...out[c.id] }));
 }
@@ -450,7 +420,10 @@ function findings(i: AuditInputs, vis: Check[], conv: Check[], hasWebsite: boole
     f.push({
       id: "reviews",
       severity: (g.reviewCount ?? 0) < 10 ? 3 : 2,
-      say: `${g.reviewCount ?? 0} Google reviews${g.rating ? ` at ${g.rating.toFixed(1)}★` : ""}. Target is 20+ at 4.5★: a review drive is a quick win.`,
+      say:
+        g.top3?.minReviews != null
+          ? `${g.reviewCount ?? 0} Google reviews${g.rating ? ` at ${g.rating.toFixed(1)}★` : ""}; the top 3 have ${g.top3.minReviews}–${g.top3.maxReviews}. A review drive closes the gap.`
+          : `${g.reviewCount ?? 0} Google reviews${g.rating ? ` at ${g.rating.toFixed(1)}★` : ""}. Target is 20+ at 4.5★: a review drive is a quick win.`,
       email: g.reviewCount ? `you have ${g.reviewCount} Google reviews, and a few more would lift you on Maps` : "you don't have any Google reviews yet",
     });
   if (hasWebsite && s?.reachable) {
@@ -482,8 +455,6 @@ function findings(i: AuditInputs, vis: Check[], conv: Check[], hasWebsite: boole
         email: `your Google profile has ${d.photos === 0 ? "no" : `only ${d.photos}`} photo${d.photos === 1 ? "" : "s"}`,
       });
   }
-  if (v("nap").state === "fail") f.push({ id: "nap", severity: 1, say: v("nap").evidence ?? "Phone differs between website and listing.", email: "the phone number on your website doesn't match your Google listing" });
-  if (v("name_says").state === "fail") f.push({ id: "name", severity: 1, say: "Name doesn't say what they do: the profile and site need to carry the service keywords.", email: "your business name doesn't tell Google what you do" });
   return f.sort((a, b) => b.severity - a.severity);
 }
 

@@ -139,6 +139,56 @@ export async function rankedIds(textQuery: string, lat: number, lng: number, rad
   return (j.places ?? []).map((p) => p.id);
 }
 
+/** One result of the top-3 check's search: enough to compare a lead with who outranks it. */
+export type RankedPlace = { id: string; name: string; rating: number | null; reviews: number | null; category: string | null; primaryType: string | null; status: string | null };
+
+/**
+ * The top-3 check's search (Competitor Check spec v2): up to 20 places in Google's order for a
+ * search, biased to a circle around the lead (~15 km). Ratings and review counts put it on the
+ * "Enterprise" text SKU; callers cache it per search and area (many leads share one).
+ */
+export async function topResults(textQuery: string, lat: number, lng: number, radiusM = 15000, languageCode?: string | null): Promise<RankedPlace[]> {
+  const fields = ["id", "displayName", "rating", "userRatingCount", "primaryType", "primaryTypeDisplayName", "businessStatus"];
+  const j = await call<{ places?: GooglePlace[] }>("text_ent", "https://places.googleapis.com/v1/places:searchText", {
+    method: "POST",
+    fieldMask: fields.map((f) => `places.${f}`).join(","),
+    body: JSON.stringify({
+      textQuery,
+      pageSize: 20,
+      locationBias: { circle: { center: { latitude: lat, longitude: lng }, radius: radiusM } },
+      ...(languageCode ? { languageCode } : {}),
+    }),
+  });
+  return (j.places ?? []).map((p) => ({
+    id: p.id,
+    name: p.displayName?.text ?? "",
+    rating: p.rating ?? null,
+    reviews: p.userRatingCount ?? 0,
+    category: p.primaryTypeDisplayName?.text ?? null,
+    primaryType: p.primaryType ?? null,
+    status: p.businessStatus ?? null,
+  }));
+}
+
+/** Find a business's own Google profile from its name and city (site and Meta leads). Enterprise SKU. */
+export async function findPlace(textQuery: string, lat?: number | null, lng?: number | null): Promise<GooglePlace | null> {
+  const j = await call<{ places?: GooglePlace[] }>("text_ent", "https://places.googleapis.com/v1/places:searchText", {
+    method: "POST",
+    fieldMask: PLACE_FIELDS.map((f) => `places.${f}`).join(","),
+    body: JSON.stringify({
+      textQuery,
+      pageSize: 1,
+      ...(lat != null && lng != null ? { locationBias: { circle: { center: { latitude: lat, longitude: lng }, radius: 30000 } } } : {}),
+    }),
+  });
+  return j.places?.[0] ?? null;
+}
+
+/** Drop a cached lookup, so the next cached() call fetches fresh (the Re-run button). */
+export async function uncache(key: string) {
+  await db.run("DELETE FROM google_cache WHERE key = ?", key);
+}
+
 /** Place Details (Enterprise SKU). */
 export async function placeDetails(placeId: string): Promise<GooglePlace> {
   return call<GooglePlace>("details_ent", `https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}`, {

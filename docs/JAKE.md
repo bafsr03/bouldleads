@@ -6,14 +6,26 @@ The first time you sign in, a 1-minute welcome tour walks you through the app; r
 ## Your morning, in order
 1. **Call list → Callbacks** (amber "due" badge): people who asked you to call back. Call these first, at the time they gave.
 2. **Call list → Replied**: they answered one of our emails. Call them now; they're warm.
-3. **Call list → To call**: new leads, best first. The **Personal list** filter (top left) shows the hottest ones (Tier A); call those from your own phone. **Dialer CSV** exports the rest for the dialer.
+3. **Call list → To call**: new leads in **top-3 check order** (green "Call 1st" = one clear gap to the top 3; blue "Call 2nd" = already top 3 but a weak website; then "Call 3rd", "Call last"; year-round trades before seasonal ones). The **Personal list** filter (top left) shows the hottest ones (Tier A); call those from your own phone. **Dialer CSV** exports the rest for the dialer.
 4. **Call list → Call again**: tried before, emails finished, no answer. Give them another go.
+
+## Top-3 check (top of every lead card)
+Before you dial, read the **Top-3 check** box:
+- **Around #N for "search" near you.** Wrong search? Edit it and press **Re-run** (fresh from Google).
+- **The top 3 + this lead**: names, stars, reviews. Always use real names and numbers on the call.
+- **Case + the one line to say**, e.g. *"The top 3 have 21–31 reviews. You have 5. Getting to about 31 is the gap."*
+- **Website flags**: no site, slow on a phone, no click-to-call, no form.
+- **Ask on the call**: profile claimed? (Yes/No) · branded search clean? (Google their name *before* the call) · last month's leads (type their numbers).
+- **Copy results link** → text it to the owner during or after the call. When they open it you'll see **Opened** (on the card and the call list): good moment to call back.
+- Say "around #4" and "near you". Never promise rankings or leads.
+
+**Site requests and Meta ads** arrive tagged **Site request** / **Meta ad**, already checked, due now in **Callbacks**. Call within 1 hour in business hours. Meta leads: **Meta leads** in the sidebar → choose the CSV downloaded from Meta.
 
 ## On each lead card
 - **Priority** (left), tier badge, Google rating, and the **local time** where they are (amber = probably closed, call later).
 - **Open with:** the #1 problem the audit found. That's your first sentence.
 - The green phone button dials (on phone or with your Mac's calling).
-- **Full audit & call brief** opens everything: scores, talking points, the 12-point checklist to fill in live (Yes / No), notes, and the activity history.
+- **Full audit & call brief** opens everything: scores, talking points, the visibility checklist to fill in live (Yes / No), notes, and the activity history.
 
 ## After every call, tap one button
 | Button | When | What happens next |

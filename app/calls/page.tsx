@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { Button, Card, Input, PageHeader, Select, ago, cx, fmt } from "@/components/ui";
-import { PitchBadge, Rating, STAGES, ScorePair, SiteChip, TierBadge, followupText, outcomeLabel } from "@/components/score";
+import { CheckBadge, PitchBadge, Rating, STAGES, ScorePair, SiteChip, SourceBadge, TierBadge, followupText, outcomeLabel } from "@/components/score";
 import { AskFor } from "@/components/ask-for";
 import { WARM_MAX } from "@/lib/call-outcomes";
 import { CallActions, LocalTime, useMinute } from "@/components/call-actions";
@@ -49,6 +49,14 @@ type Row = {
   pitch: string | null;
   site_state: string | null;
   site_label: string | null;
+  check_case: string | null;
+  check_priority: number | null;
+  check_rank: number | null;
+  check_say: string | null;
+  check_gap: string | null;
+  check_opened_at: number | null;
+  check_opens: number;
+  lead_source: string | null;
 };
 
 const SORT: Record<string, string> = { callback: "callback", booked: "called", closed: "called", recall: "priority" };
@@ -214,6 +222,8 @@ function CallsInner() {
                     <Link href={`/leads/${r.id}`} className="font-medium hover:text-accent hover:underline">
                       {r.name}
                     </Link>
+                    <SourceBadge source={r.lead_source} />
+                    <CheckBadge priority={r.check_priority} kase={r.check_case} rank={r.check_rank} />
                     <TierBadge tier={r.tier} short />
                     <PitchBadge pitch={r.pitch} />
                     <SiteChip state={r.site_state} label={r.site_label} website={r.website} socialUrl={r.social_url} />
@@ -236,10 +246,24 @@ function CallsInner() {
                       · <LocalTime tz={r.tz} />
                     </span>
                   </div>
-                  {r.top_issue && (
+                  {r.check_say ? (
                     <div className="mt-2 text-sm">
-                      <span className="text-muted">Open with: </span>
-                      {r.top_issue}
+                      <span className="text-muted">{r.check_rank ? `Around #${r.check_rank}. ` : ""}Open with: </span>
+                      {r.check_say}
+                      {r.check_gap && <span className="text-muted"> · Gap: {r.check_gap}</span>}
+                    </div>
+                  ) : (
+                    r.top_issue && (
+                      <div className="mt-2 text-sm">
+                        <span className="text-muted">Open with: </span>
+                        {r.top_issue}
+                      </div>
+                    )
+                  )}
+                  {r.check_opened_at && (
+                    <div className="mt-1 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                      Opened their results link {ago(r.check_opened_at)}
+                      {r.check_opens > 1 ? ` (${r.check_opens} times)` : ""}: good moment to follow up
                     </div>
                   )}
                   <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted">

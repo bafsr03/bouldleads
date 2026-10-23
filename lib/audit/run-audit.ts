@@ -19,6 +19,7 @@ import { near, resolveCategory, similarName } from "../discovery/match";
 import { checkSite, mobilePageSpeed, type SiteFacts } from "./site";
 import { chainReason, formatPhone, nonFitReason } from "../discovery/fit";
 import { findSite } from "./find-site";
+import { runTopCheck, top3Summary } from "../check/run-check";
 import { keywordsFor, scoreAudit, type AuditResult, type BusinessFacts, type GoogleFacts, type ManualAnswers } from "./score";
 
 // Automatic research for each lead: Google profile + map ranking + homepage check → score.
@@ -104,7 +105,7 @@ export async function saveProfile(row: AuditRow, p: ProfileFields) {
   });
   await db.run(
     `UPDATE businesses SET google_place_id = ?, google_maps_url = ?, google_type = ?, google_types = ?, rating = ?, review_count = ?,
-       business_status = ?, category = ?, category_confirmed = ? WHERE id = ?`,
+       business_status = ?, category = ?, category_confirmed = ?, google_primary_type = COALESCE(?, google_primary_type) WHERE id = ?`,
     g.placeId,
     g.mapsUrl,
     g.type,
@@ -114,6 +115,7 @@ export async function saveProfile(row: AuditRow, p: ProfileFields) {
     g.status,
     row.category,
     row.category_confirmed,
+    g.primaryType,
     row.id,
   );
 }
@@ -305,7 +307,19 @@ export async function auditOne(id: number, opts: { forceDeep?: boolean; retried?
       siteUrl ? checkSite(siteUrl, { pageSpeed: s.auditPageSpeed, googleKey: key }) : Promise.resolve(null),
       researchGoogle(row),
     ]);
-    const google: GoogleFacts = { ...g, deep: row.deep ? (JSON.parse(row.deep) as DeepFacts) : null };
+    let google: GoogleFacts = { ...g, deep: row.deep ? (JSON.parse(row.deep) as DeepFacts) : null };
+    // The top-3 check (lib/check): rank, the top 3's reviews and category, the call order. It replaces
+    // the free IDs-only rank when it runs; without a key or allowance the audit carries on without it.
+    if (google.found) {
+      const check = await runTopCheck(id, { site }).catch(async (e) => {
+        await logEvent("warn", `Top-3 check of business #${id} skipped: ${e instanceof Error ? e.message : e}`);
+        return null;
+      });
+      if (check) google = { ...google, rank: check.rank, rankQuery: check.query, top3: top3Summary(check), marketKm: check.marketKm };
+    } else if (g.checked) {
+      // Not on Google: still checked (case A), so they're sorted into the call order.
+      await runTopCheck(id, { site }).catch(() => null);
+    }
     const manual = row.audit_manual ? (JSON.parse(row.audit_manual) as ManualAnswers) : {};
     let result = scoreAudit(inputsFrom(row, site, google), manual);
     // Top leads (and anyone who pressed Deep audit) get the deeper Google + speed checks, then a rescore.

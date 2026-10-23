@@ -230,6 +230,19 @@ const COLUMNS: Record<string, [string, string][]> = {
     ["found_site", "TEXT"], // their website when Google doesn't link one (lib/audit/find-site.ts)
     ["found_site_how", "TEXT"], // phone | name (confirmed on the page) | possible (check it)
     ["site_search_at", "INTEGER"], // when we last looked for an unlinked site
+    // Top-3 check (Competitor Check spec v2, lib/check)
+    ["google_primary_type", "TEXT"], // Google's primary type id ("concrete_contractor"): compared with the top 3's
+    ["check_query", "TEXT"], // the search the check ran, editable on the lead card ("concrete contractor in Pleasant Grove")
+    ["top_check", "TEXT"], // JSON TopCheck: rank, top 20, case, website flags
+    ["checked_at", "INTEGER"],
+    ["check_case", "TEXT"], // A-G (lib/check/diagnose.ts CASES)
+    ["check_priority", "INTEGER"], // 1 call first … 4 call last, 9 skip
+    ["seasonal", "INTEGER NOT NULL DEFAULT 0"], // seasonal trade: called after year-round ones in the same priority
+    ["check_slug", "TEXT"], // bouldhq.com/check/<slug>, made by "Copy results link"
+    ["check_opened_at", "INTEGER"], // last time the owner opened their results link
+    ["check_opens", "INTEGER NOT NULL DEFAULT 0"],
+    ["lead_source", "TEXT"], // site | meta: they asked for a check (never filtered out of the call list)
+    ["lead_contact", "TEXT"], // JSON: who asked, their email, what they do, UTM (site / Meta leads)
   ],
   searches: [
     ["place", "TEXT"], // "Lima, Peru": groups searches on the Places page
@@ -249,7 +262,9 @@ async function migrate(c: Client) {
     CREATE INDEX IF NOT EXISTS idx_businesses_place ON businesses(google_place_id);
     CREATE INDEX IF NOT EXISTS idx_businesses_geo ON businesses(lat, lng);
     CREATE INDEX IF NOT EXISTS idx_businesses_call ON businesses(call_outcome);
-    CREATE INDEX IF NOT EXISTS idx_cl_business ON campaign_leads(business_id);`);
+    CREATE INDEX IF NOT EXISTS idx_cl_business ON campaign_leads(business_id);
+    CREATE INDEX IF NOT EXISTS idx_businesses_check ON businesses(check_priority);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_businesses_slug ON businesses(check_slug);`);
   // Places for searches made before the column existed.
   const missing = (await c.execute("SELECT id, label, area FROM searches WHERE place IS NULL")).rows;
   for (const r of missing) {

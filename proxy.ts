@@ -1,9 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, authEnabled, readSession } from "@/lib/auth";
 
-// Everything requires a login when APP_USERS is set, except the login itself and the cron endpoint
-// (which checks its own CRON_SECRET).
-const OPEN = ["/login", "/api/auth/", "/api/cron/"];
+// Everything requires a login when APP_USERS is set, except the login itself, the cron endpoint
+// (which checks its own CRON_SECRET) and the public API bouldhq.com calls (PUBLIC_API_SECRET).
+const OPEN = ["/login", "/api/auth/", "/api/cron/", "/api/public/"];
 
 export function proxy(req: NextRequest) {
   if (!authEnabled()) return NextResponse.next();

@@ -49,6 +49,8 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/leads/[id]">) {
     tz,
     audit: b.audit ? JSON.parse(b.audit) : null,
     audit_manual: b.audit_manual ? JSON.parse(b.audit_manual) : {},
+    top_check: typeof b.top_check === "string" ? JSON.parse(b.top_check) : null,
+    lead_contact: typeof b.lead_contact === "string" ? JSON.parse(b.lead_contact) : null,
     outreach,
     replies,
     calls,
@@ -68,6 +70,7 @@ type Patch = {
   startFollowup?: boolean; // override the "No answer starts emails" setting for this call
   category?: string; // what the business really is, set by hand (e.g. after checking the Google profile)
   askFor?: string | null; // who to ask for: "Jamie answers, ask for Kenny"
+  lastMonthLeads?: string; // top-3 check card: "knows last month's leads", their starting numbers if they sign
 };
 
 // Manual audit answers, notes and call outcomes. Re-scores instantly from the stored research.
@@ -77,7 +80,7 @@ export async function PATCH(req: Request, ctx: RouteContext<"/api/leads/[id]">) 
   const row = await db.get<{ audit_manual: string | null }>("SELECT audit_manual FROM businesses WHERE id = ?", id);
   if (!row) return bad("Not found", 404);
 
-  if (b.check || typeof b.notes === "string") {
+  if (b.check || typeof b.notes === "string" || typeof b.lastMonthLeads === "string") {
     const manual: ManualAnswers = row.audit_manual ? JSON.parse(row.audit_manual) : {};
     if (b.check) {
       if (!VISIBILITY_CHECKS.some((c) => c.id === b.check!.id)) return bad("Unknown check");
@@ -86,6 +89,14 @@ export async function PATCH(req: Request, ctx: RouteContext<"/api/leads/[id]">) 
       else delete manual.checks[b.check.id];
     }
     if (typeof b.notes === "string") manual.notes = b.notes.slice(0, 10_000);
+    if (typeof b.lastMonthLeads === "string") {
+      const v = b.lastMonthLeads.trim().slice(0, 300);
+      manual.lastMonthLeads = v || undefined;
+      // Writing their numbers down answers the check: they know them.
+      manual.checks ??= {};
+      if (v) manual.checks.knows_leads = "pass";
+      else delete manual.checks.knows_leads;
+    }
     await db.run("UPDATE businesses SET audit_manual = ? WHERE id = ?", JSON.stringify(manual), id);
   }
 
@@ -110,7 +121,7 @@ export async function PATCH(req: Request, ctx: RouteContext<"/api/leads/[id]">) 
   } else if (b.callbackAt !== undefined) {
     await db.run("UPDATE businesses SET callback_at = ? WHERE id = ?", b.callbackAt, id);
   }
-  const audit = b.check ? await rescore(id) : undefined;
+  const audit = b.check || typeof b.lastMonthLeads === "string" ? await rescore(id) : undefined;
   return json({ ok: true, audit, call });
 }
 
