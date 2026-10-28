@@ -147,5 +147,6 @@ export function CheckBadge({ priority, kase, rank }: { priority: number | null; 
 export function SourceBadge({ source }: { source: string | null | undefined }) {
   if (source === "site") return <Badge tone="orange">Site request</Badge>;
   if (source === "meta") return <Badge tone="orange">Meta ad</Badge>;
+  if (source === "google-ads-mn") return <Badge tone="orange">Google ads MN</Badge>;
   return null;
 }

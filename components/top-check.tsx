@@ -93,7 +93,7 @@ export function TopCheckPanel({ lead: l, onChange }: { lead: CheckLead; onChange
 
       {contact && (
         <p className="rounded-lg bg-background p-3 text-sm">
-          <span className="text-muted">{l.lead_source === "meta" ? "Meta ad lead" : "Asked on bouldhq.com"}:</span> {contact.name ?? "(no name)"}
+          <span className="text-muted">{l.lead_source === "meta" ? "Meta ad lead" : l.lead_source === "google-ads-mn" ? "Google ads MN quote" : "Asked on bouldhq.com"}:</span> {contact.name ?? "(no name)"}
           {contact.service && <> · does “{contact.service}”</>}
           {contact.email && <> · {contact.email}</>}
           {contact.utm?.utm_source && <span className="text-muted"> · from {[contact.utm.utm_source, contact.utm.utm_campaign].filter(Boolean).join(" / ")}</span>}

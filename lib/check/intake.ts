@@ -11,7 +11,7 @@ import { cityCentre, runTopCheck } from "./run-check";
 // opens a lead that's ready to call.
 
 export type IntakeInput = {
-  kind: "site" | "meta" | "callback";
+  kind: "site" | "meta" | "callback" | "google-ads-mn";
   business?: string | null;
   city?: string | null;
   service?: string | null; // "What you do", in their words
@@ -24,6 +24,14 @@ export type IntakeInput = {
   utm?: Record<string, string> | null;
   formSource?: string | null;
   metaId?: string | null; // Meta lead id: importing the same CSV twice doesn't add anyone twice
+};
+
+/** How each kind of inbound lead is labelled in the log and on the lead card. */
+const SOURCE_LABEL: Record<IntakeInput["kind"], string> = {
+  site: "Site request",
+  meta: "Meta ad",
+  callback: "Callback",
+  "google-ads-mn": "Google ads MN",
 };
 
 export type IntakeResult = { ok: true; id: number; case: string | null; merged: boolean } | { ok: false; error: string };
@@ -131,7 +139,7 @@ export async function intake(input: IntakeInput): Promise<IntakeResult> {
     const row = await db.get<AuditRow>("SELECT * FROM businesses WHERE id = ?", id);
     if (row) await saveProfile(row, place);
   }
-  await logEvent("info", `${input.kind === "meta" ? "Meta ad" : "Site request"}: ${business}${city ? `, ${city}` : ""}${existing ? " (already a lead: updated)" : ""}`);
+  await logEvent("info", `${SOURCE_LABEL[input.kind]}: ${business}${city ? `, ${city}` : ""}${existing ? " (already a lead: updated)" : ""}`);
 
   // The check now (one cached search); the full audit (website, deep profile) in the background.
   let kase: string | null = null;

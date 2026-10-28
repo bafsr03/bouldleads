@@ -241,7 +241,7 @@ const COLUMNS: Record<string, [string, string][]> = {
     ["check_slug", "TEXT"], // bouldhq.com/check/<slug>, made by "Copy results link"
     ["check_opened_at", "INTEGER"], // last time the owner opened their results link
     ["check_opens", "INTEGER NOT NULL DEFAULT 0"],
-    ["lead_source", "TEXT"], // site | meta: they asked for a check (never filtered out of the call list)
+    ["lead_source", "TEXT"], // site | meta | google-ads-mn: they asked for a check or a quote (never filtered out of the call list)
     ["lead_contact", "TEXT"], // JSON: who asked, their email, what they do, UTM (site / Meta leads)
   ],
   searches: [
