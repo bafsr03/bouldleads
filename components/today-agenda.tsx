@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, BellRing, CalendarClock, Phone } from "lucide-react";
+import { Bell, BellRing, CalendarClock, ChevronDown, ChevronUp, Phone } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useSyncExternalStore } from "react";
@@ -125,12 +125,31 @@ export function useCallbackAlerts(enabled: boolean): CallbackCounts | null {
   return data?.counts ?? null;
 }
 
+// Shown or hidden, remembered per browser: the list gets long on a busy day.
+const OPEN_KEY = "bouldleads:todo-open";
+function readOpen(): boolean {
+  try {
+    return localStorage.getItem(OPEN_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+
 /** "Today's to-do" card: Overview and Call list. */
 export function TodayAgenda({ className }: { className?: string }) {
   const { data } = useAgenda();
   const perm = useNotificationPermission();
   const minute = useMinute();
   const [hideAsk, setHideAsk] = useState(false);
+  // Safe to read on the first client render: the server renders nothing here (no data yet).
+  const [open, setOpen] = useState(() => (typeof window === "undefined" ? true : readOpen()));
+  const toggle = () =>
+    setOpen((o) => {
+      try {
+        localStorage.setItem(OPEN_KEY, o ? "0" : "1");
+      } catch {}
+      return !o;
+    });
   if (!data) return null;
   const nowMs = minute * 60_000;
   return (
@@ -146,18 +165,25 @@ export function TodayAgenda({ className }: { className?: string }) {
         <Link href="/callbacks" className="text-xs text-accent hover:underline">
           All callbacks →
         </Link>
-        {perm === "default" && !hideAsk && (
-          <Button size="sm" className="ml-auto" onClick={() => (askPermission(), setHideAsk(true))} title="Pop-up reminders while BouldLeads is open in a tab">
-            <Bell size={13} /> Turn on desktop alerts
-          </Button>
-        )}
-        {perm === "granted" && (
-          <span className="ml-auto inline-flex items-center gap-1 text-xs text-muted" title="You get a pop-up 5 minutes before each callback while BouldLeads is open in a tab">
-            <BellRing size={12} /> Alerts on
-          </span>
-        )}
+        <span className="ml-auto flex items-center gap-2">
+          {perm === "default" && !hideAsk && (
+            <Button size="sm" onClick={() => (askPermission(), setHideAsk(true))} title="Pop-up reminders while BouldLeads is open in a tab">
+              <Bell size={13} /> Turn on desktop alerts
+            </Button>
+          )}
+          {perm === "granted" && (
+            <span className="inline-flex items-center gap-1 text-xs text-muted" title="You get a pop-up 5 minutes before each callback while BouldLeads is open in a tab">
+              <BellRing size={12} /> Alerts on
+            </span>
+          )}
+          {data.items.length > 0 && (
+            <Button size="sm" onClick={toggle} aria-expanded={open} title={open ? "Hide today's callbacks (the counts stay)" : "Show today's callbacks"}>
+              {open ? <ChevronUp size={13} /> : <ChevronDown size={13} />} {open ? "Hide" : `Show ${data.items.length}`}
+            </Button>
+          )}
+        </span>
       </div>
-      {data.items.length > 0 && (
+      {open && data.items.length > 0 && (
         <ul className="divide-y divide-border/60">
           {data.items.map((it) => {
             const late = !!nowMs && it.callback_at < nowMs;
