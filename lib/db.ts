@@ -279,6 +279,15 @@ async function migrate(c: Client) {
     CREATE INDEX IF NOT EXISTS idx_cl_business ON campaign_leads(business_id);
     CREATE INDEX IF NOT EXISTS idx_businesses_check ON businesses(check_priority);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_businesses_slug ON businesses(check_slug);`);
+  // Once: every audited lead is researched again under the Oct 28 2026 rules (service + city + state
+  // searches, the state in the city lookup, excluded categories, the website grade and the new call
+  // order). Closed leads are left alone; the free-tier guard still caps the Google calls.
+  const REAUDIT_KEY = "once:reaudit-2026-10-29"; // not "sys:": copy-to-hosted keeps those out
+  if (!(await c.execute({ sql: "SELECT 1 FROM settings WHERE key = ?", args: [REAUDIT_KEY] })).rows.length) {
+    await c.execute(`UPDATE businesses SET audit_status = 'queued' WHERE audit_status IN ('done', 'failed') AND dnc = 0
+      AND COALESCE(call_outcome, '') NOT IN ('won', 'not_interested', 'do_not_call', 'wrong_number', 'disconnected', 'bad_lead')`);
+    await c.execute({ sql: "INSERT INTO settings (key, value) VALUES (?, ?)", args: [REAUDIT_KEY, String(Date.now())] });
+  }
   // Places for searches made before the column existed.
   const missing = (await c.execute("SELECT id, label, area FROM searches WHERE place IS NULL")).rows;
   for (const r of missing) {
