@@ -253,7 +253,7 @@ export function LiveDashboard({ refreshKey = 0 }: { refreshKey?: number }) {
           <Card>
             <h2 className="mb-3 font-semibold">Where leads are</h2>
             <StackedBar
-              parts={STAGES.filter((s) => emailOn !== false || (s.value !== "followup" && s.value !== "replied")).map((s) => ({
+              parts={STAGES.filter((s) => emailOn || (s.value !== "followup" && s.value !== "replied")).map((s) => ({
                 label: s.label,
                 value: data?.stages[s.value] ?? 0,
                 color: STAGE_COLOR[s.value],

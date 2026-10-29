@@ -41,8 +41,8 @@ export function Nav() {
     window.location.replace("/login"); // full reload: drop every cached view
   }
 
-  // Callbacks badge: overdue + due today, the same numbers as Today's to-do.
-  const badge = (href: string) => (href === "/replies" ? data?.replied : href === "/callbacks" ? (cb ? cb.overdue + cb.today : 0) : 0);
+  // Callbacks badge: new requests + overdue + due today, the same numbers as Today's to-do (orange while a request waits).
+  const badge = (href: string) => (href === "/replies" ? data?.replied : href === "/callbacks" ? (cb ? cb.requests + cb.overdue + cb.today : 0) : 0);
 
   return (
     <aside className="flex shrink-0 flex-col border-b border-border bg-surface md:sticky md:top-0 md:h-screen md:w-60 md:border-b-0 md:border-r">
@@ -66,7 +66,7 @@ export function Nav() {
         </div>
       </div>
       <nav className="flex gap-1 overflow-x-auto px-3 pb-3 md:flex-1 md:flex-col md:pb-0">
-        {LINKS.filter((l) => emailOn !== false || !EMAIL_PAGES.includes(l.href)).map(({ href, label, icon: Icon }) => {
+        {LINKS.filter((l) => emailOn || !EMAIL_PAGES.includes(l.href)).map(({ href, label, icon: Icon }) => {
           const active = href === "/" ? path === "/" : path === href || path.startsWith(`${href}/`); // "/calls" isn't "/callbacks"
           const n = badge(href);
           return (
@@ -84,7 +84,7 @@ export function Nav() {
                 <span
                   className={cx(
                     "ml-auto rounded-full px-1.5 text-[11px] font-semibold",
-                    href === "/callbacks" ? "bg-yellow-400 text-zinc-900" : "bg-accent text-white",
+                    href === "/callbacks" ? (cb?.requests ? "bg-orange-500 text-white" : "bg-yellow-400 text-zinc-900") : "bg-accent text-white",
                   )}
                   title={href === "/callbacks" ? (cb ? countsText(cb) : "Callbacks due") : "Replies"}
                 >
@@ -101,7 +101,7 @@ export function Nav() {
       >
         <CircleHelp size={16} strokeWidth={1.75} /> Guide
       </button>
-      {me && <WelcomeTour user={me.user} autoOpen={!me.onboarded} emailOn={emailOn !== false} />}
+      {me && <WelcomeTour user={me.user} autoOpen={!me.onboarded} emailOn={!!emailOn} />}
       {me?.user && (
         <div className="hidden items-center justify-between border-t border-border px-5 py-3 text-sm md:flex">
           <span className="truncate">

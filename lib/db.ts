@@ -288,6 +288,12 @@ async function migrate(c: Client) {
       AND COALESCE(call_outcome, '') NOT IN ('won', 'not_interested', 'do_not_call', 'wrong_number', 'disconnected', 'bad_lead')`);
     await c.execute({ sql: "INSERT INTO settings (key, value) VALUES (?, ?)", args: [REAUDIT_KEY, String(Date.now())] });
   }
+  // Once: intake used to store "Ask for Kenny (asked for a check)", shown as "Ask for: Ask for Kenny…".
+  const ASKFOR_KEY = "once:askfor-prefix-2026-10-29";
+  if (!(await c.execute({ sql: "SELECT 1 FROM settings WHERE key = ?", args: [ASKFOR_KEY] })).rows.length) {
+    await c.execute("UPDATE businesses SET ask_for = substr(ask_for, 9) WHERE ask_for LIKE 'Ask for %'");
+    await c.execute({ sql: "INSERT INTO settings (key, value) VALUES (?, ?)", args: [ASKFOR_KEY, String(Date.now())] });
+  }
   // Places for searches made before the column existed.
   const missing = (await c.execute("SELECT id, label, area FROM searches WHERE place IS NULL")).rows;
   for (const r of missing) {

@@ -74,7 +74,7 @@ function CallsInner() {
   const nowMs = useMinute() * 60_000;
   const emailOn = useEmailOn();
   // Without email outreach there are no email replies or follow-ups to show.
-  const stages = STAGES.filter((s) => emailOn !== false || (s.value !== "followup" && s.value !== "replied"));
+  const stages = STAGES.filter((s) => emailOn || (s.value !== "followup" && s.value !== "replied"));
 
   const { data: settings } = useApi<{ settings: { personalTiers: string[]; dialerBatchSize: number } }>("/api/settings");
   const personal = settings?.settings.personalTiers ?? ["A"];

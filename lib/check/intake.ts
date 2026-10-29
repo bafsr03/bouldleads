@@ -50,7 +50,7 @@ export async function intake(input: IntakeInput): Promise<IntakeResult> {
     await db.run(
       "UPDATE businesses SET callback_at = ?, ask_for = COALESCE(?, ask_for), phone = COALESCE(phone, ?) WHERE id = ?",
       now(),
-      name ? `Ask for ${name}${phone ? ` (${phone})` : ""}` : null,
+      name ? `${name}${phone ? ` (${phone})` : ""}` : null, // shown as "Ask for: …"
       phone,
       row.id,
     );
@@ -86,7 +86,7 @@ export async function intake(input: IntakeInput): Promise<IntakeResult> {
     at: now(),
   };
   const query = service && city ? `${service} in ${city}` : null;
-  const askFor = name ? `Ask for ${name} (asked for a check)` : null;
+  const askFor = name ? `${name} (asked for a check)` : null; // shown as "Ask for: …"
   const t = now();
 
   // A business we already have (same Google profile) is updated, not duplicated.
