@@ -3,16 +3,18 @@
 import { CalendarClock, ChevronDown, ChevronRight, Phone } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
-import { Card, PageHeader, cx } from "@/components/ui";
+import { Card, PageHeader, ago, cx } from "@/components/ui";
 import { CallActions, LocalTime, useMinute } from "@/components/call-actions";
 import { CategoryText } from "@/components/category-label";
 import { browserTz } from "@/components/call-counter";
 import { useApi } from "@/components/use-api";
 import { AskFor } from "@/components/ask-for";
+import { SourceBadge } from "@/components/score";
 import { WARM_MAX, outcomeLabel } from "@/lib/call-outcomes";
 
 // The follow-up list: every callback someone set, grouped by day ("who am I calling on Monday?"),
-// with when it was marked and the note from the call. Log the result right from the list.
+// with when it was marked and the note from the call. Log the result right from the list. New requests
+// (someone asked us for a check and nobody has called yet) sit on top in their own orange card.
 
 type Row = {
   id: number;
@@ -32,6 +34,8 @@ type Row = {
   call_outcome: string | null;
   call_attempts: number;
   warm_tries: number;
+  lead_source: string | null;
+  asked_at: number | null;
 };
 
 const DAY = 86_400_000;
@@ -52,10 +56,17 @@ function Item({ r, onDone }: { r: Row; onDone: () => void }) {
   return (
     <li className="py-3">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-        <span className={cx("w-20 shrink-0 font-semibold tabular-nums", r.overdue && "text-yellow-700 dark:text-yellow-300")}>{time(r.callback_at)}</span>
+        {r.asked_at != null ? (
+          <span className="w-20 shrink-0 font-semibold tabular-nums text-orange-700 dark:text-orange-300" title={`Asked ${short(r.asked_at)}`}>
+            {ago(r.asked_at)}
+          </span>
+        ) : (
+          <span className={cx("w-20 shrink-0 font-semibold tabular-nums", r.overdue && "text-yellow-700 dark:text-yellow-300")}>{time(r.callback_at)}</span>
+        )}
         <Link href={`/leads/${r.id}`} className="min-w-0 font-medium hover:text-accent hover:underline">
           {r.name}
         </Link>
+        {r.asked_at != null && <SourceBadge source={r.lead_source} />}
         <span className="text-xs text-muted">
           <CategoryText category={r.category} confirmed={r.category_confirmed} />
           {r.city && ` · ${r.city}`}
@@ -101,7 +112,8 @@ export default function CallbacksPage() {
   const { data, reload } = useApi<Row[]>(`/api/calls/schedule?${new URLSearchParams({ tz: browserTz() })}`, 30_000);
   const minute = useMinute();
   const today = minute ? keyOf(new Date(minute * 60_000)) : "";
-  const rows = data ?? [];
+  const requests = (data ?? []).filter((r) => r.asked_at != null);
+  const rows = (data ?? []).filter((r) => r.asked_at == null);
   const overdue = rows.filter((r) => r.overdue && r.day < today);
   const upcoming = rows.filter((r) => !(r.overdue && r.day < today));
   const days = [...new Set(upcoming.map((r) => r.day))];
@@ -143,7 +155,21 @@ export default function CallbacksPage() {
         </div>
       )}
 
-      {data && rows.length === 0 && (
+      {requests.length > 0 && (
+        <Card className="mb-4 border-orange-400 dark:border-orange-700">
+          <h2 className="flex flex-wrap items-baseline gap-2 font-semibold text-orange-700 dark:text-orange-300">
+            New requests ({requests.length})
+            <span className="text-xs font-normal text-muted">They asked us for a check: call within the hour</span>
+          </h2>
+          <ul className="divide-y divide-border/60">
+            {requests.map((r) => (
+              <Item key={r.id} r={r} onDone={reload} />
+            ))}
+          </ul>
+        </Card>
+      )}
+
+      {data && rows.length === 0 && requests.length === 0 && (
         <Card className="text-center text-sm text-muted">
           <CalendarClock size={20} className="mx-auto mb-2 opacity-60" />
           No callbacks scheduled. On a call, tap <b>Call back</b> and pick a time: it lands here.

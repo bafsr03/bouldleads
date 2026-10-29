@@ -303,19 +303,23 @@ export type AgendaItem = {
   call_outcome: string | null;
   call_attempts: number;
   warm_tries: number;
+  lead_source: string | null;
+  asked_at: number | null; // set while it's a new request: they asked (site, Meta ad…) and nobody has called since
 };
 
 // Warm leads: a callback is set and the phone is still good.
 const WARM_WHERE = "b.callback_at IS NOT NULL AND b.dnc = 0 AND b.phone_bad = 0";
 const AGENDA_COLS = `b.id, b.name, b.phone, b.city, b.lat, b.lng, b.callback_at, b.ask_for, b.category, b.category_confirmed,
-  b.call_outcome, b.call_attempts, b.warm_tries,
+  b.call_outcome, b.call_attempts, b.warm_tries, b.lead_source,
+  CASE WHEN b.lead_source IS NOT NULL AND NOT EXISTS (SELECT 1 FROM calls c WHERE c.business_id = b.id AND c.created_at >= json_extract(b.lead_contact, '$.at'))
+    THEN json_extract(b.lead_contact, '$.at') END AS asked_at,
   (SELECT c.note FROM calls c WHERE c.business_id = b.id AND c.note IS NOT NULL AND c.note != '' ORDER BY c.created_at DESC LIMIT 1) AS note`;
 
-export type CallbackCounts = { overdue: number; today: number; scheduled: number };
+export type CallbackCounts = { overdue: number; today: number; scheduled: number; requests: number };
 
 /**
- * Today's to-do: callbacks that are overdue or due today (caller's time zone), earliest first, plus
- * the one set of counts every screen shows: "2 overdue · 3 today · 13 scheduled".
+ * Today's to-do: new requests, and callbacks that are overdue or due today (caller's time zone), earliest
+ * first, plus the one set of counts every screen shows: "1 new request · 2 overdue · 3 today · 13 scheduled".
  */
 export async function callbackAgenda(tz: string, t = now()): Promise<{ items: AgendaItem[]; tomorrow: number; counts: CallbackCounts }> {
   const rows = await db.all<Omit<AgendaItem, "overdue">>(`SELECT ${AGENDA_COLS} FROM businesses b WHERE ${WARM_WHERE} ORDER BY b.callback_at LIMIT 1000`);
@@ -323,14 +327,21 @@ export async function callbackAgenda(tz: string, t = now()): Promise<{ items: Ag
   const tomorrowKey = dayKey(t + 86_400_000, tz);
   const items: AgendaItem[] = [];
   let tomorrow = 0;
-  const counts: CallbackCounts = { overdue: 0, today: 0, scheduled: rows.length };
+  const counts: CallbackCounts = { overdue: 0, today: 0, scheduled: rows.length, requests: 0 };
   for (const r of rows) {
+    if (r.asked_at != null) {
+      // A new request: always on today's list, counted once (not also as overdue / today).
+      counts.requests++;
+      items.push({ ...r, overdue: r.callback_at < t });
+      continue;
+    }
     const k = dayKey(r.callback_at, tz);
     if (r.callback_at < t) counts.overdue++;
     else if (k === today) counts.today++;
     if (r.callback_at < t || k <= today) items.push({ ...r, overdue: r.callback_at < t });
     else if (k === tomorrowKey) tomorrow++;
   }
+  counts.scheduled -= counts.requests;
   return { items, tomorrow, counts };
 }
 

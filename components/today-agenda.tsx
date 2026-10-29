@@ -10,11 +10,13 @@ import { toast } from "./feedback";
 import { CALL_LOGGED, browserTz } from "./call-counter";
 import { LocalTime, useMinute } from "./call-actions";
 import { CategoryText } from "./category-label";
+import { SourceBadge } from "./score";
 import { WARM_MAX, outcomeLabel } from "@/lib/call-outcomes";
 
-// Today's to-do: callbacks that are overdue or due today, earliest first. useCallbackAlerts() (mounted
-// once, in the nav) pops an in-app toast and a desktop notification 5 minutes before each one, while
-// BouldLeads is open in a browser tab.
+// Today's to-do: new requests (someone asked us for a check and nobody has called yet) first, then
+// callbacks that are overdue or due today, earliest first. useCallbackAlerts() (mounted once, in the
+// nav) pops an in-app toast and a desktop notification when a request comes in and 5 minutes before
+// each callback, while BouldLeads is open in a browser tab.
 
 type Item = {
   id: number;
@@ -31,17 +33,22 @@ type Item = {
   call_outcome: string | null;
   call_attempts: number;
   warm_tries: number;
+  lead_source: string | null;
+  asked_at: number | null;
 };
-export type CallbackCounts = { overdue: number; today: number; scheduled: number };
+export type CallbackCounts = { overdue: number; today: number; scheduled: number; requests: number };
 type Agenda = { items: Item[]; tomorrow: number; counts: CallbackCounts };
 
-/** The one way every screen counts callbacks: "2 overdue · 3 today · 13 scheduled". */
+/** The one way every screen counts callbacks: "1 new request · 2 overdue · 3 today · 13 scheduled". */
 export function countsText(c: CallbackCounts) {
-  const parts = [c.overdue && `${c.overdue} overdue`, c.today && `${c.today} today`, `${c.scheduled} scheduled`].filter(Boolean);
+  const parts = [c.requests && `${c.requests} new request${c.requests === 1 ? "" : "s"}`, c.overdue && `${c.overdue} overdue`, c.today && `${c.today} today`, `${c.scheduled} scheduled`].filter(Boolean);
   return parts.join(" · ");
 }
 
 const agendaUrl = () => `/api/calls/agenda?${new URLSearchParams({ tz: browserTz() })}`;
+/** "site request", "Meta ad lead"… for alerts. */
+export const requestLabel = (source: string | null) =>
+  source === "meta" ? "Meta ad lead" : source === "google-ads-mn" ? "Google ads MN quote" : "site request";
 const time = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 const when = (ms: number, nowMs: number) => {
   const sameDay = new Date(ms).toDateString() === new Date(nowMs).toDateString();
@@ -106,6 +113,24 @@ export function useCallbackAlerts(enabled: boolean): CallbackCounts | null {
     const nowMs = minute * 60_000;
     const done = new Set(fired());
     for (const it of data.items) {
+      if (it.asked_at != null) {
+        // They asked us: alert as it arrives, not as a callback.
+        const key = `${it.id}:req:${it.asked_at}`;
+        if (done.has(key) || it.asked_at < nowMs - STALE_MS) continue;
+        markFired(key);
+        const text = `New ${requestLabel(it.lead_source)}: ${it.name}`;
+        toast(`${text}${it.phone ? ` · ${it.phone}` : ""} · call within the hour`, "info");
+        if (readPerm() === "granted") {
+          try {
+            const n = new Notification(text, { body: [it.phone, "They asked for a check: call within the hour"].filter(Boolean).join(" · "), tag: key });
+            n.onclick = () => {
+              window.focus();
+              router.push(`/leads/${it.id}`);
+            };
+          } catch {}
+        }
+        continue;
+      }
       const key = `${it.id}:${it.callback_at}`;
       if (done.has(key) || it.callback_at - LEAD_MS > nowMs || it.callback_at < nowMs - STALE_MS) continue;
       markFired(key);
@@ -152,6 +177,7 @@ export function TodayAgenda({ className }: { className?: string }) {
     });
   if (!data) return null;
   const nowMs = minute * 60_000;
+  const items = [...data.items.filter((it) => it.asked_at != null), ...data.items.filter((it) => it.asked_at == null)];
   return (
     <Card className={cx("p-4", className)}>
       <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -185,17 +211,19 @@ export function TodayAgenda({ className }: { className?: string }) {
       </div>
       {open && data.items.length > 0 && (
         <ul className="divide-y divide-border/60">
-          {data.items.map((it) => {
-            const late = !!nowMs && it.callback_at < nowMs;
+          {items.map((it) => {
+            const asked = it.asked_at != null;
+            const late = !asked && !!nowMs && it.callback_at < nowMs;
             return (
               <li key={it.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
-                <span className={cx("w-28 shrink-0 font-medium tabular-nums", late ? "text-yellow-700 dark:text-yellow-300" : "")}>
-                  {nowMs ? when(it.callback_at, nowMs) : ""}
+                <span className={cx("w-28 shrink-0 font-medium tabular-nums", asked ? "text-orange-700 dark:text-orange-300" : late ? "text-yellow-700 dark:text-yellow-300" : "")}>
+                  {asked ? "New request" : nowMs ? when(it.callback_at, nowMs) : ""}
                   {late && <span className="ml-1 text-xs font-normal">overdue</span>}
                 </span>
                 <Link href={`/leads/${it.id}`} className="min-w-0 font-medium hover:text-accent hover:underline">
                   {it.name}
                 </Link>
+                {asked && <SourceBadge source={it.lead_source} />}
                 <span className="text-xs text-muted">
                   <CategoryText category={it.category} confirmed={it.category_confirmed} />
                   {it.city && ` · ${it.city}`}

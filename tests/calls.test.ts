@@ -310,6 +310,21 @@ describe("warm leads", () => {
     expect(sched.find((r) => r.id === 153)).toMatchObject({ call_outcome: "bad_timing", marked_at: t - 86_400_000 });
   });
 
+  it("put a new request on top until someone calls, counted once", async () => {
+    await lead(155, null);
+    const t = Date.UTC(2026, 9, 29, 19, 0);
+    const asked = t - 10 * 60_000;
+    await db.run("UPDATE businesses SET lead_source = 'site', lead_contact = ?, callback_at = ? WHERE id = 155", JSON.stringify({ at: asked }), asked);
+    const before = await calls.callbackAgenda("America/Denver", t);
+    expect(before.items.find((i) => i.id === 155)).toMatchObject({ lead_source: "site", asked_at: asked });
+    expect(before.counts.requests).toBe(1);
+    await calls.logCall(155, "call_back", { callbackAt: t + 3600_000, now: t });
+    const after = await calls.callbackAgenda("America/Denver", t);
+    expect(after.items.find((i) => i.id === 155)).toMatchObject({ asked_at: null });
+    expect(after.counts.requests).toBe(0);
+    expect(after.counts.today - before.counts.today).toBe(1);
+  });
+
   it("record the lead's pitch type on each call, for the 'which pitch books' report", async () => {
     await lead(154, null);
     await db.run(`UPDATE businesses SET audit = '{"pitch":{"key":"visibility","label":"Visibility"}}' WHERE id = 154`);
