@@ -175,3 +175,10 @@ describe("site readers", () => {
     expect(citiesIn("Serving Rochester, MN and Byron, Minnesota")).toEqual(["Rochester", "Byron"]);
   });
 });
+
+describe("Jake's answers (Oct 29)", () => {
+  it("counts Yelp as paying for leads", () => {
+    expect(payingFor({ leadServices: ["Yelp"] } as SiteFacts).paying).toBe(true);
+    expect(leadServiceLine(["Yelp"])).toBe("Uses Yelp. Ask what they spend a month.");
+  });
+});

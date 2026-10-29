@@ -150,8 +150,12 @@ export type SiteFlags = {
 
 export const anyFlag = (f: SiteFlags) => f.noSite || f.slowMobile || f.noCall || f.noForm;
 
-/** A weak or missing website. Before a site had a grade, any red flag counted. */
-export const weakSite = (f: SiteFlags) => f.noSite || (f.grade ? f.grade === "Weak" : anyFlag(f));
+/**
+ * A weak or missing website. An "OK" site counts as weak when it has no click-to-call or no quote form:
+ * those lose the calls a top-3 ranking brings (Oct 29 2026). Before a site had a grade, any red flag counted.
+ */
+export const weakSite = (f: SiteFlags) =>
+  f.noSite || (f.grade ? f.grade === "Weak" || (f.grade === "OK" && (f.noCall || f.noForm)) : anyFlag(f));
 
 /** 0 = "1+" (paying for marketing, still #4–20), 1 = call first … 4 = call last; SKIP = don't call. */
 export const SKIP = 9;

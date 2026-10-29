@@ -87,8 +87,8 @@ export function locationMismatch(site: SiteFacts | null, profileCity: string | n
 
 // ---------- §4.2 Who built it, are they paying for leads ----------
 
-/** Lead services that mean money spent (a Yelp page alone doesn't). */
-const PAID = new Set(["HomeAdvisor", "Angi", "Thumbtack", "Porch"]);
+/** Lead services that mean money spent. Yelp counts too (Jake, Oct 29 2026). */
+const PAID = new Set(["HomeAdvisor", "Angi", "Thumbtack", "Porch", "Yelp"]);
 
 export function payingFor(site: SiteFacts | null): { builder: string | null; services: string[]; paying: boolean } {
   const builder = site?.builder ?? null;
@@ -98,8 +98,7 @@ export function payingFor(site: SiteFacts | null): { builder: string | null; ser
 
 export function leadServiceLine(services: string[]): string | null {
   const paid = services.filter((s) => PAID.has(s));
-  if (paid.length) return `Uses ${paid.join(" and ")}. Ask what they spend a month.`;
-  return services.includes("Yelp") ? "Links their Yelp page. Ask if they pay for Yelp ads." : null;
+  return paid.length ? `Uses ${paid.join(" and ")}. Ask what they spend a month.` : null;
 }
 
 // ---------- §4.3 Google profile website link ----------

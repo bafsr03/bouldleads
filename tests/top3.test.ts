@@ -125,6 +125,8 @@ describe("call order (Oct 28 2026 brief §6)", () => {
     expect(P("G", 1, { ...noFlags, noSite: true })).toBe(2);
     expect(P("G", 1, strong)).toBe(SKIP); // graded: one red flag doesn't make a strong site weak
     expect(P("G", 1, { ...noFlags, grade: "OK" })).toBe(SKIP);
+    expect(P("G", 1, { ...noFlags, grade: "OK", noCall: true })).toBe(2); // OK, but losing the calls
+    expect(P("G", 1, { ...noFlags, grade: "OK", noForm: true })).toBe(2);
     expect(P("G", 3, { ...noFlags, noCall: true })).toBe(2); // no grade yet: any flag counts
   });
 
