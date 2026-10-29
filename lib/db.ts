@@ -235,21 +235,35 @@ const COLUMNS: Record<string, [string, string][]> = {
     ["check_query", "TEXT"], // the search the check ran, editable on the lead card ("concrete contractor in Pleasant Grove")
     ["top_check", "TEXT"], // JSON TopCheck: rank, top 20, case, website flags
     ["checked_at", "INTEGER"],
-    ["check_case", "TEXT"], // A-G (lib/check/diagnose.ts CASES)
-    ["check_priority", "INTEGER"], // 1 call first … 4 call last, 9 skip
+    ["check_case", "TEXT"], // A-G (lib/check/diagnose.ts CASES), 'none' = no check (excluded, or no customer search)
+    ["check_priority", "INTEGER"], // 0 = 1+ (paying, #4–20), 1 call first … 4 call last, 9 skip
     ["seasonal", "INTEGER NOT NULL DEFAULT 0"], // seasonal trade: called after year-round ones in the same priority
     ["check_slug", "TEXT"], // bouldhq.com/check/<slug>, made by "Copy results link"
     ["check_opened_at", "INTEGER"], // last time the owner opened their results link
     ["check_opens", "INTEGER NOT NULL DEFAULT 0"],
     ["lead_source", "TEXT"], // site | meta | google-ads-mn: they asked for a check or a quote (never filtered out of the call list)
     ["lead_contact", "TEXT"], // JSON: who asked, their email, what they do, UTM (site / Meta leads)
+    // Lead Sourcing & Scoring Improvements (Oct 28 2026)
+    ["check_query_manual", "INTEGER NOT NULL DEFAULT 0"], // 1 = the check's search was typed by a person: kept, not rebuilt
+    ["check_note", "TEXT"], // why there's no check: "Excluded category: Labor union" / no customer search (check_case 'none')
+    ["big_ticket", "INTEGER NOT NULL DEFAULT 0"], // roofing, remodeling, waterproofing…: called first within a priority
+    ["revisit_at", "INTEGER"], // top 3 with a good site: skipped until this date (6 months)
+    ["site_builder", "TEXT"], // who built their website ("Big West Marketing"), from the footer or the call
+    ["site_builder_manual", "INTEGER NOT NULL DEFAULT 0"], // 1 = typed on the call: the audit doesn't overwrite it
+    ["talked_to", "TEXT"], // who we talked to on the call
+    ["marketing_spend", "TEXT"], // what they pay for marketing, if they said
+    ["next_step", "TEXT"],
+    ["bad_reason", "TEXT"], // Bad lead: not_customer | already_top3 | wrong_trade | out_of_business | wrong_number
   ],
   searches: [
     ["place", "TEXT"], // "Lima, Peru": groups searches on the Places page
     ["cursor", "TEXT"], // JSON {googleDone, nextTile}: lets a search resume across background ticks
   ],
   campaigns: [["kind", "TEXT NOT NULL DEFAULT 'campaign'"]], // campaign | followup (the no-answer sequence)
-  calls: [["pitch", "TEXT"]], // the lead's pitch type when called (website | visibility | both | corporate | solid): which pitch books
+  calls: [
+    ["pitch", "TEXT"], // the lead's pitch type when called (website | visibility | both | corporate | solid): which pitch books
+    ["bad_reason", "TEXT"], // for outcome bad_lead: feeds the filters and the bad-lead rate
+  ],
 };
 
 async function migrate(c: Client) {

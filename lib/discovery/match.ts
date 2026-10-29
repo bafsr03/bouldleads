@@ -94,7 +94,8 @@ const typeByGoogle = (gtype: string) =>
  * motorcycles, so the search term alone isn't proof:
  *   1. Google's types include the searched type → confirmed
  *   2. Google's primary type is a different catalog type → that type
- *   3. The name says it ("The Max Detail" for car wash & detailing) → confirmed
+ *   3. The name says it ("The Max Detail" for car wash & detailing) → confirmed; or names another trade
+ *      ("Liebenow Waterproofing" from a plumber search) → that trade
  *   4. Google has a specific primary type we don't catalog ("General Contractor") → Google's label
  *   5. Otherwise the searched type, unconfirmed: check the profile on the call.
  */
@@ -106,6 +107,9 @@ export function resolveCategory(searched: string | null, name: string, g: Google
   const other = primary ? typeByGoogle(primary) : undefined;
   if (other && other !== t) return { category: other.label, confirmed: true };
   if (t && nameFits(name, t)) return { category: t.label, confirmed: true };
+  // The name names another trade ("Liebenow Waterproofing" from a plumber search).
+  const named = BUSINESS_TYPES.find((x) => x !== t && x.group === "trades" && nameFits(name, x));
+  if (named) return { category: named.label, confirmed: true };
   const label = g.primaryTypeLabel && !isGenericLabel(g.primaryTypeLabel) && primary ? g.primaryTypeLabel : null;
   if (label) return { category: label, confirmed: true };
   return { category: searched ?? g.primaryTypeLabel ?? null, confirmed: false };

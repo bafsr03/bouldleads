@@ -7,11 +7,12 @@ import { send } from "./use-api";
 import { toast } from "./feedback";
 import { useEmailOn } from "./use-flags";
 import { CALL_LOGGED } from "./call-counter";
-import { CLOSING } from "@/lib/call-outcomes";
+import { BAD_REASONS, CLOSING } from "@/lib/call-outcomes";
 
-// One-tap call dispositions. "No answer" and "Voicemail" also start the email follow-up when the
-// lead has an email (Settings → Calling). "Call back" and "Bad timing" ask when; the lead stays warm
-// in Callbacks. Outcomes that close a lead take a second tap. An optional note goes with any call.
+// One-tap call dispositions (Oct 28 2026 brief §7). "No answer" and "Voicemail" also start the email
+// follow-up when the lead has an email (Settings → Calling). "Talked: callback" and "Bad timing" ask when;
+// the lead stays warm in Callbacks. "Bad lead" asks why, and the reason feeds the filters. Outcomes that
+// close a lead take a second tap. An optional note goes with any call.
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const toLocalInput = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -25,7 +26,7 @@ function at(daysAhead: number, hour: number) {
 
 export type CallLead = { id: number; name: string; email: string | null; status: string; call_outcome?: string | null };
 
-type Picking = "call_back" | "bad_timing" | null;
+type Picking = "call_back" | "bad_timing" | "bad_lead" | null;
 
 export function CallActions({ lead, onDone, layout = "stack" }: { lead: CallLead; onDone: () => void; layout?: "stack" | "row" }) {
   const [busy, setBusy] = useState<string | null>(null);
@@ -54,7 +55,8 @@ export function CallActions({ lead, onDone, layout = "stack" }: { lead: CallLead
 
   async function log(outcome: string, extra: Record<string, unknown> = {}) {
     // Outcomes that close the lead take a second tap: the buttons sit right under the phone number.
-    if (CLOSING.includes(outcome) && confirming !== outcome) {
+    // A bad lead's reason pick is that second tap.
+    if (CLOSING.includes(outcome) && outcome !== "bad_lead" && confirming !== outcome) {
       setConfirming(outcome);
       return;
     }
@@ -83,7 +85,7 @@ export function CallActions({ lead, onDone, layout = "stack" }: { lead: CallLead
     }
   }
 
-  const schedule = (d: Date) => log(picking ?? "call_back", { callbackAt: d.getTime() });
+  const schedule = (d: Date) => log(picking === "bad_timing" ? "bad_timing" : "call_back", { callbackAt: d.getTime() });
   const toggle = (p: Exclude<Picking, null>) => setPicking((cur) => (cur === p ? null : p));
   const sure = (v: string, label: string) => (confirming === v ? "Tap again to confirm" : label);
   const closingCls = (v: string) => cx(confirming === v && "border-red-500 text-red-700 dark:text-red-400");
@@ -110,11 +112,14 @@ export function CallActions({ lead, onDone, layout = "stack" }: { lead: CallLead
         <Button size="sm" disabled={!!busy} onClick={() => log("voicemail")} title={canEmail ? "Left a voicemail (also starts the email follow-up)" : "Left a voicemail"}>
           Voicemail
         </Button>
+        <Button size="sm" disabled={!!busy} onClick={() => log("gatekeeper")} title="Reached someone, not the owner: the lead moves to Call again">
+          Gatekeeper
+        </Button>
         <Button size="sm" disabled={!!busy} onClick={() => toggle("call_back")} className={cx(picking === "call_back" && "border-accent text-accent")}>
-          <CalendarClock size={13} /> Call back
+          <CalendarClock size={13} /> Talked: callback
         </Button>
         <Button size="sm" disabled={!!busy} onClick={() => log("audit_booked")} className="text-emerald-700 dark:text-emerald-400">
-          Booked
+          Screen share booked
         </Button>
         <Button
           size="sm"
@@ -129,7 +134,16 @@ export function CallActions({ lead, onDone, layout = "stack" }: { lead: CallLead
           Hung up
         </Button>
         <Button size="sm" disabled={!!busy} onClick={() => log("not_interested")} className={closingCls("not_interested")}>
-          {sure("not_interested", "Not interested")}
+          {sure("not_interested", "Talked: not interested")}
+        </Button>
+        <Button
+          size="sm"
+          disabled={!!busy}
+          onClick={() => toggle("bad_lead")}
+          className={cx(picking === "bad_lead" ? "border-red-500 text-red-700 dark:text-red-400" : "")}
+          title="Shouldn't have been a lead: pick why. The reason tunes the filters"
+        >
+          Bad lead
         </Button>
         <div className="relative" ref={moreRef}>
           <Button size="sm" disabled={!!busy} onClick={() => setMore((m) => !m)} className="w-full">
@@ -139,7 +153,7 @@ export function CallActions({ lead, onDone, layout = "stack" }: { lead: CallLead
             <div className="absolute right-0 z-20 mt-1 w-48 rounded-lg border border-border bg-surface p-1 text-sm shadow-lg">
               {[
                 ["disconnected", "Number disconnected"],
-                ["won", "Won: client"],
+                ["won", "Closed: client"],
                 ["wrong_number", "Wrong number"],
                 ["do_not_call", "Do not call"],
               ].map(([v, l]) => (
@@ -160,7 +174,19 @@ export function CallActions({ lead, onDone, layout = "stack" }: { lead: CallLead
           )}
         </div>
       </div>
-      {picking && (
+      {picking === "bad_lead" && (
+        <div className="rounded-lg border border-border bg-background p-3">
+          <div className="mb-2 text-xs font-medium">Bad lead: why?</div>
+          <div className="flex flex-wrap gap-1.5">
+            {BAD_REASONS.map((r) => (
+              <Button key={r.value} size="sm" disabled={!!busy} onClick={() => log("bad_lead", { badReason: r.value })} title={"hint" in r ? r.hint : undefined}>
+                {r.label}
+              </Button>
+            ))}
+          </div>
+        </div>
+      )}
+      {(picking === "call_back" || picking === "bad_timing") && (
         <div className="rounded-lg border border-border bg-background p-3">
           <div className="mb-2 flex items-center gap-1.5 text-xs font-medium">
             <Clock size={12} /> {picking === "bad_timing" ? "Bad timing: when should we try again?" : "When should we call back?"}
@@ -205,10 +231,12 @@ const OUTCOME_TEXT: Record<string, string> = {
   no_answer: "no answer",
   voicemail: "voicemail left",
   call_back: "callback scheduled",
-  audit_booked: "audit booked",
+  audit_booked: "screen share booked",
+  gatekeeper: "gatekeeper, moved to Call again",
+  bad_lead: "bad lead, removed from the call list",
   hung_up: "hung up, moved to Call again",
   bad_timing: "bad timing, callback scheduled",
-  won: "marked as won",
+  won: "closed: a client",
   not_interested: "not interested",
   wrong_number: "wrong number",
   disconnected: "number disconnected, removed from the call list",

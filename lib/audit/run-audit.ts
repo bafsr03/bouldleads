@@ -20,6 +20,7 @@ import { checkSite, mobilePageSpeed, type SiteFacts } from "./site";
 import { chainReason, formatPhone, nonFitReason } from "../discovery/fit";
 import { findSite } from "./find-site";
 import { runTopCheck, top3Summary } from "../check/run-check";
+import { excludedReason } from "../check/terms";
 import { keywordsFor, scoreAudit, type AuditResult, type BusinessFacts, type GoogleFacts, type ManualAnswers } from "./score";
 
 // Automatic research for each lead: Google profile + map ranking + homepage check → score.
@@ -43,6 +44,7 @@ export type AuditRow = {
   google_place_id: string | null;
   google_type: string | null;
   google_types: string | null;
+  google_primary_type?: string | null;
   category_confirmed: number | null;
   rating: number | null;
   review_count: number | null;
@@ -203,7 +205,9 @@ async function researchGoogle(row: AuditRow): Promise<GoogleFacts> {
   }
 }
 
-function inputsFrom(row: AuditRow, site: SiteFacts | null, google: GoogleFacts) {
+type Lists = { excluded: string[]; retail: string[] };
+
+function inputsFrom(row: AuditRow, site: SiteFacts | null, google: GoogleFacts, lists: Lists) {
   const t = typeFor(row);
   const business: BusinessFacts = {
     name: row.name,
@@ -219,7 +223,10 @@ function inputsFrom(row: AuditRow, site: SiteFacts | null, google: GoogleFacts) 
     chain: !!row.chain,
     // Chains and non-fits are re-derived on every score, so a longer brand list fixes old leads too.
     chainReason: chainReason(row),
-    nonFit: nonFitReason({ name: row.name, googleLabel: row.google_type, categoryId: t?.id }),
+    // Not a customer (§3.1 of the Oct 28 brief: unions, churches, schools…) is "Not a fit" too, so it leaves the call list.
+    nonFit:
+      nonFitReason({ name: row.name, googleLabel: row.google_type, categoryId: t?.id }) ??
+      excludedReason({ category: row.category, google_type: row.google_type, primaryType: row.google_primary_type }, lists),
     socialUrl: row.social_url ?? null,
     // A site we found that Google doesn't link: scored as their website, pitched as "link it".
     ...(!row.website && confirmedFound(row) ? { website: row.found_site!, unlinkedSite: true } : {}),
@@ -304,7 +311,7 @@ export async function auditOne(id: number, opts: { forceDeep?: boolean; retried?
     }
     const siteUrl = row.website ?? (confirmedFound(row) ? row.found_site! : null);
     const [site, g] = await Promise.all([
-      siteUrl ? checkSite(siteUrl, { pageSpeed: s.auditPageSpeed, googleKey: key }) : Promise.resolve(null),
+      siteUrl ? checkSite(siteUrl, { pageSpeed: s.auditPageSpeed, googleKey: key, city: row.city }) : Promise.resolve(null),
       researchGoogle(row),
     ]);
     let google: GoogleFacts = { ...g, deep: row.deep ? (JSON.parse(row.deep) as DeepFacts) : null };
@@ -321,13 +328,16 @@ export async function auditOne(id: number, opts: { forceDeep?: boolean; retried?
       await runTopCheck(id, { site }).catch(() => null);
     }
     const manual = row.audit_manual ? (JSON.parse(row.audit_manual) as ManualAnswers) : {};
-    let result = scoreAudit(inputsFrom(row, site, google), manual);
+    const lists = { excluded: s.excludedCategories, retail: s.excludedRetail };
+    let result = scoreAudit(inputsFrom(row, site, google, lists), manual);
     // Top leads (and anyone who pressed Deep audit) get the deeper Google + speed checks, then a rescore.
     if (opts.forceDeep || result.tier === "A" || result.tier === "B") {
       const more = await deepen(row, site, google, key, opts.forceDeep);
       // Wrong profile or new category: the ranking search and talking points must be redone (once).
       if (more.changed && !opts.retried) return auditOne(id, { ...opts, retried: true });
-      result = scoreAudit(inputsFrom(row, more.site, more.google), manual);
+      // The deep pass measured phone speed: the check's website grade and call order use it.
+      if (google.found && more.site?.pageSpeed != null && site?.pageSpeed == null) await runTopCheck(id, { site: more.site }).catch(() => null);
+      result = scoreAudit(inputsFrom(row, more.site, more.google, lists), manual);
     }
     await save(id, result);
     return result;
@@ -357,7 +367,9 @@ export async function rescore(id: number, opts: { site?: SiteFacts | null } = {}
       : {}),
     deep: row.deep ? (JSON.parse(row.deep) as DeepFacts) : (pg.deep ?? null),
   };
-  const inputs = { ...prev.inputs, google, business: inputsFrom(row, null, google).business, ...(opts.site !== undefined ? { site: opts.site } : {}) };
+  const s = await getSettings();
+  const lists = { excluded: s.excludedCategories, retail: s.excludedRetail };
+  const inputs = { ...prev.inputs, google, business: inputsFrom(row, null, google, lists).business, ...(opts.site !== undefined ? { site: opts.site } : {}) };
   const result = scoreAudit(inputs, manual);
   await save(id, result, false);
   return result;
@@ -381,7 +393,7 @@ export async function staleForReaudit(max: number): Promise<number[]> {
   const rows = await db.all<{ id: number }>(
     `SELECT id FROM businesses
      WHERE audit_status = 'done' AND audited_at < ? AND tier IN ('A', 'B', 'C') AND dnc = 0 AND phone_bad = 0
-       AND (call_outcome IS NULL OR call_outcome NOT IN ('audit_booked', 'won', 'not_interested', 'do_not_call'))
+       AND (call_outcome IS NULL OR call_outcome NOT IN ('audit_booked', 'won', 'not_interested', 'do_not_call', 'bad_lead'))
      ORDER BY priority DESC LIMIT ?`,
     now() - REAUDIT_DAYS * DAY,
     room,

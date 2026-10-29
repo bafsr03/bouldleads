@@ -127,11 +127,13 @@ export function PitchBadge({ pitch }: { pitch: string | null | undefined }) {
   );
 }
 
-const CALL_TONE: Record<number, Tone> = { 1: "green", 2: "blue", 3: "yellow", 4: "gray", [SKIP]: "red" };
-const CALL_SHORT: Record<number, string> = { 1: "Call 1st", 2: "Call 2nd", 3: "Call 3rd", 4: "Call last", [SKIP]: "Skip" };
+const CALL_TONE: Record<number, Tone> = { 0: "green", 1: "green", 2: "blue", 3: "yellow", 4: "gray", [SKIP]: "red" };
+const CALL_SHORT: Record<number, string> = { 0: "Call 1st+", 1: "Call 1st", 2: "Call 2nd", 3: "Call 3rd", 4: "Call last", [SKIP]: "Skip" };
 
 /** The top-3 check's call order and case: "Call 1st · E Reviews" (Competitor Check spec v2 §3.4). */
 export function CheckBadge({ priority, kase, rank }: { priority: number | null; kase: string | null; rank?: number | null }) {
+  // Excluded or no real customer search: no check ran (Oct 28 2026 brief §3.1–3.2).
+  if (kase === "none") return <Badge tone={priority === SKIP ? "red" : "gray"}>{priority === SKIP ? "Skip · excluded" : "No check"}</Badge>;
   if (priority == null || !kase) return null;
   const title = `Case ${kase}: ${CASES[kase as CaseKey] ?? ""}${rank ? ` · around #${rank}` : ""}`;
   return (

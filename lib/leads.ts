@@ -56,7 +56,7 @@ export function leadListWhere(f: LeadListFilter) {
   }
   if (f.phone === "1") where.push("phone IS NOT NULL AND phone != ''");
   if (f.phone === "1") where.push("phone_bad = 0");
-  if (f.calls === "open") where.push("COALESCE(call_outcome, '') NOT IN ('not_interested', 'won', 'do_not_call') AND dnc = 0 AND status != 'excluded'");
+  if (f.calls === "open") where.push("COALESCE(call_outcome, '') NOT IN ('not_interested', 'won', 'do_not_call', 'bad_lead') AND dnc = 0 AND status != 'excluded'");
   if (f.q) {
     where.push("(name LIKE ? OR email LIKE ? OR city LIKE ? OR category LIKE ? OR domain LIKE ? OR address LIKE ? OR phone LIKE ?)");
     params.push(...Array(7).fill(`%${f.q}%`));
@@ -66,9 +66,11 @@ export function leadListWhere(f: LeadListFilter) {
 
 export const leadOrder = (f: LeadListFilter) =>
   ({
-    // Competitor Check spec v2 §3.4: call order from the top-3 check first (1 one clear gap … 4 most
-    // work, unchecked next, skip last), year-round trades before seasonal ones, then the audit priority.
-    priority: "ORDER BY COALESCE(check_priority, 5), seasonal, priority IS NULL, priority DESC, id DESC",
+    // Call order from the top-3 check first (1+ paying … 4 most work, unchecked next, skip last); within a
+    // priority bigger-ticket trades, then established businesses (20+ reviews), then year-round trades
+    // (Lead Sourcing & Scoring Improvements §6), then the audit priority.
+    priority:
+      "ORDER BY COALESCE(check_priority, 5), big_ticket DESC, COALESCE(review_count, 0) >= 20 DESC, seasonal, priority IS NULL, priority DESC, id DESC",
     callback: "ORDER BY callback_at IS NULL, callback_at, priority DESC",
     called: "ORDER BY called_at DESC, id DESC",
   })[f.sort ?? ""] ?? "ORDER BY id DESC";

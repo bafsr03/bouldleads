@@ -96,12 +96,14 @@ export async function intake(input: IntakeInput): Promise<IntakeResult> {
     id = existing.id;
     await db.run(
       `UPDATE businesses SET lead_source = ?, lead_contact = ?, phone = COALESCE(?, phone), email = COALESCE(email, ?), ask_for = COALESCE(?, ask_for),
-         check_query = COALESCE(?, check_query), callback_at = COALESCE(callback_at, ?), dnc = 0 WHERE id = ?`,
+         check_query = COALESCE(?, check_query), check_query_manual = CASE WHEN ? IS NOT NULL THEN 1 ELSE check_query_manual END,
+         callback_at = COALESCE(callback_at, ?), dnc = 0 WHERE id = ?`,
       input.kind,
       JSON.stringify(contact),
       phone,
       contact.email,
       askFor,
+      query,
       query,
       t,
       id,
@@ -110,8 +112,8 @@ export async function intake(input: IntakeInput): Promise<IntakeResult> {
     id = (
       await db.run(
         `INSERT INTO businesses (source, source_id, name, category, address, city, country_code, lat, lng, phone, website, email, email_source, email_confidence,
-           status, created_at, lead_source, lead_contact, ask_for, check_query, callback_at)
-         VALUES (?, ?, ?, NULL, ?, ?, 'US', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           status, created_at, lead_source, lead_contact, ask_for, check_query, check_query_manual, callback_at)
+         VALUES (?, ?, ?, NULL, ?, ?, 'US', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         place ? "google" : "inbound",
         place ? place.id : `${input.kind}:${crypto.randomUUID()}`,
         place?.displayName?.text ?? business,
@@ -130,6 +132,7 @@ export async function intake(input: IntakeInput): Promise<IntakeResult> {
         JSON.stringify(contact),
         askFor,
         query,
+        query ? 1 : 0, // what the owner said they do: kept over the automatic search
         t, // due now in Callbacks: they asked for the call
       )
     ).lastId;

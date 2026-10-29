@@ -35,6 +35,7 @@ export default function SettingsPage() {
     secrets: { anthropicApiKey: boolean; googlePlacesApiKey: boolean };
     secretsFromEnv: { anthropicApiKey: boolean; googlePlacesApiKey: boolean };
     googleUsage: { sku: string; label: string; used: number; free: number | null }[];
+    builders: { name: string; leads: number }[];
   }>("/api/settings");
   const { data: dismissed, reload: reloadDismissed } = useApi<{ count: number }>("/api/dismissed");
   const { data: supp, reload: reloadSupp } = useApi<{ value: string; reason: string; created_at: number }[]>("/api/suppressions");
@@ -309,6 +310,50 @@ export default function SettingsPage() {
               <Input type="number" min={10} max={5000} value={s.dialerBatchSize} onChange={(e) => set({ dialerBatchSize: Math.max(10, +e.target.value) })} />
               <p className="mt-1 text-xs text-muted">So a day&apos;s dialing never floods the queue.</p>
             </div>
+          </div>
+        </Card>
+
+        <Card className="space-y-4 lg:col-span-2">
+          <div>
+            <h2 className="font-semibold">Who isn&apos;t a customer</h2>
+            <p className="text-sm text-muted">
+              Leads whose Google category contains one of these words are never added from a search, score as <b>Not a fit</b> and get no top-3
+              check. One per line. A <b>Bad lead: not a customer</b> on a call adds that lead&apos;s category here.
+            </p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <Label hint="(always excluded)">Excluded categories</Label>
+              <Textarea
+                rows={8}
+                value={s.excludedCategories.join("\n")}
+                onChange={(e) => set({ excludedCategories: e.target.value.split("\n") })}
+                onBlur={() => set({ excludedCategories: s.excludedCategories.map((x) => x.trim()).filter(Boolean) })}
+              />
+            </div>
+            <div>
+              <Label hint="(kept when you run a retail or Shopify list)">Retail and product categories</Label>
+              <Textarea
+                rows={8}
+                value={s.excludedRetail.join("\n")}
+                onChange={(e) => set({ excludedRetail: e.target.value.split("\n") })}
+                onBlur={() => set({ excludedRetail: s.excludedRetail.map((x) => x.trim()).filter(Boolean) })}
+              />
+            </div>
+          </div>
+          <div>
+            <Label hint="(from website footers and calls)">Website builders we&apos;ve seen</Label>
+            {data.builders.length === 0 ? (
+              <p className="text-sm text-muted">None yet: they show up as audits read &quot;Website by …&quot; in footers.</p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5 text-sm">
+                {data.builders.map((b) => (
+                  <span key={b.name} className="rounded-md border border-border px-2 py-0.5">
+                    {b.name} <span className="text-muted">· {fmt(b.leads)}</span>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         </Card>
 

@@ -66,15 +66,20 @@ export function serviceOf(query: string, city: string | null): string {
 }
 
 /**
- * Spec §3.3: check in order, stop at the first that fails, show only that one.
+ * Spec §3.3: check in order, stop at the first that fails, show only that one. Case rules updated from
+ * the Rochester, MN calls (Lead Sourcing & Scoring Improvements, Oct 28 2026 §4):
+ *  - B only when the lead's category differs from all of the top 3 (and the search is for a trade
+ *    the lead offers), for any lead outside the top 3.
+ *  - E only when the review gap is real: under half of #3's reviews, or 10+ behind #3.
+ *  - F says so when reviews are as strong as the top 3's: the gap is distance or relevance.
  *
- * Two readings of the spec, flagged for Jake:
+ * Two readings of the earlier spec, flagged for Jake:
  *  - D (rating) applies only from #4 down. A #2 business at 4.3★ is already found, so it gets G,
  *    not "every top-3 business has 4.5 stars" (which would contradict them being in the top 3).
  *  - D only says "every top-3 business has 4.5 stars or higher" when that's true; otherwise it
  *    gives the top 3's actual ratings. The wording rules say always show real numbers.
  */
-export function diagnose(lead: LeadFacts, top: Competitor[], query: string, city: string | null): Diagnosis {
+export function diagnose(lead: LeadFacts, top: Competitor[], query: string, city: string | null, opts: { offersService?: boolean } = {}): Diagnosis {
   const top3 = top.slice(0, 3);
   const rank = rankOf(lead.placeId, top);
   const service = serviceOf(query, city);
@@ -83,20 +88,25 @@ export function diagnose(lead: LeadFacts, top: Competitor[], query: string, city
   if (!lead.placeId || closed(lead.status))
     return d("A", `You're not on Google Maps yet, so people searching for ${service} can't find you. That's step one.`, "No Google profile");
 
-  if (rank == null) {
-    const tc = topCategory(top3);
-    // Unknown categories on either side count as a match: only a clear mismatch is case B.
-    const mismatch = !!tc.primaryType && !!lead.primaryType && tc.primaryType !== lead.primaryType;
-    if (mismatch)
-      return d(
-        "B",
-        `The top 3 are listed as ${tc.category ?? tc.primaryType}. You're listed as ${lead.category ?? lead.primaryType}, so Google doesn't show you for this search.`,
-        `Category: ${lead.category ?? lead.primaryType} → ${tc.category ?? tc.primaryType}`,
-      );
-    return d("C", `You're not in the top 20 for "${query}" near you. Your profile needs work before anything else.`, "Not in the top 20");
+  if (rank != null && rank <= 3) return d("G", "You're already found. The question is whether your website turns those searches into calls.");
+
+  // B: a clear mismatch only. Unknown categories don't count, and one top-3 business sharing the
+  // lead's category (IBEW's #3) means the category isn't what's holding it back.
+  const known = top3.filter((c) => c.primaryType);
+  const tc = topCategory(top3);
+  if (opts.offersService !== false && lead.primaryType && known.length > 0 && !known.some((c) => c.primaryType === lead.primaryType)) {
+    const them = tc.category ?? tc.primaryType;
+    const you = lead.category ?? lead.primaryType;
+    return d(
+      "B",
+      rank == null
+        ? `The top 3 are listed as ${them}. You're listed as ${you}, so Google doesn't show you for this search.`
+        : `The top 3 are listed as ${them}. You're listed as ${you}, so Google ranks you lower for this search.`,
+      `Category: ${you} → ${them}`,
+    );
   }
 
-  if (rank <= 3) return d("G", "You're already found. The question is whether your website turns those searches into calls.");
+  if (rank == null) return d("C", `You're not in the top 20 for "${query}" near you. Your profile needs work before anything else.`, "Not in the top 20");
 
   if (lead.rating != null && lead.rating < RATING_TARGET) {
     const ratings = top3.map((c) => c.rating).filter((r): r is number => r != null);
@@ -112,35 +122,52 @@ export function diagnose(lead: LeadFacts, top: Competitor[], query: string, city
   const max = Math.max(...counts);
   const third = top3[top3.length - 1]?.reviews ?? min;
   const n = lead.reviews ?? 0;
-  if (top3.length > 0 && n < min)
+  if (top3.length > 0 && reviewGap(n, third))
     return d(
       "E",
       `The top 3 have ${min === max ? min : `${min}–${max}`} reviews. You have ${n}. Getting to about ${third} is the gap.`,
       `${third - n} reviews to go (${n} → ${third})`,
     );
 
+  if (top3.length > 0 && n >= max) return d("F", "Your reviews are strong. Reviews aren't what's holding you back.");
   return d("F", "Your reviews keep up. The gap is likely distance or your profile details. We'll look at it together.");
 }
 
-// ---------- Who to call first (spec §3.4) ----------
+/** A review gap worth pitching: fewer than half of #3's reviews, or 10+ behind #3 (7 vs 8–10 isn't). */
+export const reviewGap = (n: number, third: number) => n < third / 2 || third - n >= 10;
 
-export type SiteFlags = { noSite: boolean; slowMobile: boolean; noCall: boolean; noForm: boolean; mobileScore: number | null };
+// ---------- Who to call first (Lead Sourcing & Scoring Improvements §6) ----------
+
+/** `grade` is the website grade (site-grade.ts); null = no site of their own, or we couldn't read it. */
+export type SiteFlags = {
+  noSite: boolean;
+  slowMobile: boolean;
+  noCall: boolean;
+  noForm: boolean;
+  mobileScore: number | null;
+  grade?: "Strong" | "OK" | "Weak" | null;
+};
 
 export const anyFlag = (f: SiteFlags) => f.noSite || f.slowMobile || f.noCall || f.noForm;
 
-/** 1 = call first … 4 = call last; SKIP = don't call (filtered out, or top 3 with a good website). */
+/** A weak or missing website. Before a site had a grade, any red flag counted. */
+export const weakSite = (f: SiteFlags) => f.noSite || (f.grade ? f.grade === "Weak" : anyFlag(f));
+
+/** 0 = "1+" (paying for marketing, still #4–20), 1 = call first … 4 = call last; SKIP = don't call. */
 export const SKIP = 9;
 
 export const PRIORITY_LABEL: Record<number, string> = {
-  1: "Call first: close, one clear gap",
-  2: "Call 2nd: top 3, losing the calls",
-  3: "Call 3rd: close, no obvious gap",
-  4: "Call last: most work to fix",
+  0: "Call first (1+): paying for marketing, still #4–20",
+  1: "Call 1st: #4–20 with a clear gap",
+  2: "Call 2nd: top 3, weak website",
+  3: "Call 3rd: close, no clear gap",
+  4: "Call last: not in the top 20, or not on Google",
   [SKIP]: "Skip",
 };
 
 export const PITCH: Record<number, string> = {
-  1: "Here's the one thing between you and the top 3. (Golden Formula)",
+  0: "Here's what's holding you back. They already pay for marketing that isn't getting them into the top 3. (Growth plan)",
+  1: "Here's what's holding you back. (Golden Formula)",
   2: "You're getting found and losing the calls. (Website Build)",
   3: "Dig in on the call.",
   4: "Most work to fix.",
@@ -148,23 +175,41 @@ export const PITCH: Record<number, string> = {
 };
 
 /**
- * Spec §3.4 filter: rating under 4.0, closed, no reviews, no real local address.
- * Only for cold leads: someone who asked for a check (site form, Meta ad) is never filtered out.
+ * Removed before ranking: an excluded category (not a customer), closed, rating under 4.0, no real local
+ * address. Only for cold leads: someone who asked for a check (site form, Meta ad) is never filtered out.
  */
-export function skipReason(lead: LeadFacts & { address: string | null }, inbound: boolean): string | null {
-  if (inbound || !lead.placeId) return null; // case A is "call last", not skipped
+export function skipReason(lead: LeadFacts & { address: string | null }, inbound: boolean, excluded: string | null = null): string | null {
+  if (inbound) return null;
+  if (excluded) return excluded;
+  if (!lead.placeId) return null; // case A is "call last", not skipped
   if (closed(lead.status)) return "Marked closed on Google";
   if (lead.rating != null && lead.rating < 4.0) return `Rating ${fmt(lead.rating)}★ (under 4.0)`;
-  if (!lead.reviews) return "No Google reviews";
   if (!lead.address || !/\d/.test(lead.address)) return "No street address (service area only)";
   return null;
 }
 
-export function callPriority(c: CaseKey, flags: SiteFlags): number {
-  if (c === "B" || c === "D" || c === "E") return 1;
-  if (c === "G") return anyFlag(flags) ? 2 : SKIP;
-  if (c === "F") return 3;
-  return 4; // A, C
+export type PriorityInput = {
+  case: CaseKey;
+  rank: number | null;
+  flags: SiteFlags;
+  locationMismatch?: boolean; // §4.1
+  paying?: boolean; // §4.2: an agency built the site, or they pay HomeAdvisor / Angi / Thumbtack / Porch
+};
+
+/**
+ *   1+  paying an agency or lead service, ranked #4–20
+ *   1   #4–20 with a clear, fixable gap: category, rating, a real review gap, location mismatch, weak site
+ *   2   top 3 with a weak or no website
+ *   3   close, no clear gap
+ *   4   not in the top 20, or not on Google
+ *   Skip  top 3 with a website that passes (callback in 6 months)
+ */
+export function callPriority(p: PriorityInput): number {
+  if (p.case === "G") return weakSite(p.flags) ? 2 : SKIP;
+  if (p.rank == null || p.case === "A" || p.case === "C") return 4;
+  if (p.paying) return 0;
+  if (p.case === "B" || p.case === "D" || p.case === "E" || p.locationMismatch || weakSite(p.flags)) return 1;
+  return 3;
 }
 
 // ---------- Results link ----------

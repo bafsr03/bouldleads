@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SKIP, callPriority, diagnose, makeSlug, rankOf, serviceOf, skipReason, topCategory, type Competitor, type LeadFacts, type SiteFlags } from "@/lib/check/diagnose";
+import { SKIP, callPriority, diagnose, makeSlug, rankOf, reviewGap, serviceOf, skipReason, topCategory, type Competitor, type LeadFacts, type SiteFlags } from "@/lib/check/diagnose";
 
 const c = (id: string, name: string, rating: number | null, reviews: number | null, primaryType = "web_designer", category = "Website designer"): Competitor => ({
   id,
@@ -42,7 +42,7 @@ describe("diagnose (spec §3.3)", () => {
   });
 
   it("A: no Google profile, or marked closed", () => {
-    expect(diagnose(lead({ placeId: null }), WEST_JORDAN, "concrete contractor in Provo", "Provo").say).toBe(
+    expect(diagnose(lead({ placeId: null }), WEST_JORDAN, "concrete contractor Provo UT", "Provo").say).toBe(
       "You're not on Google Maps yet, so people searching for concrete contractor can't find you. That's step one.",
     );
     expect(diagnose(lead({ status: "CLOSED_PERMANENTLY" }), WEST_JORDAN, Q, null).case).toBe("A");
@@ -68,7 +68,29 @@ describe("diagnose (spec §3.3)", () => {
   });
 
   it("F: in the top 20 and keeping up on reviews and rating", () => {
-    expect(diagnose(lead({ reviews: 40 }), WEST_JORDAN, Q, null).case).toBe("F");
+    const d = diagnose(lead({ reviews: 40 }), WEST_JORDAN, Q, null);
+    expect(d.case).toBe("F");
+    expect(d.say).toBe("Your reviews are strong. Reviews aren't what's holding you back.");
+    // Close to #3 (25 vs 31): not a review gap, but not "strong" either.
+    expect(diagnose(lead({ reviews: 25 }), WEST_JORDAN, Q, null).say).toMatch(/^Your reviews keep up/);
+  });
+
+  it("E only for a real gap: under half of #3, or 10+ behind", () => {
+    expect(reviewGap(7, 10)).toBe(false); // Liebenow: 7 vs 8–10 isn't the gap
+    expect(reviewGap(4, 10)).toBe(true);
+    expect(reviewGap(30, 40)).toBe(true);
+    expect(reviewGap(31, 40)).toBe(false);
+  });
+
+  it("B: only when no top-3 business shares the lead's category, also when ranked #4–20", () => {
+    const mixedCats = [c("p1", "A", 4.8, 25), c("p2", "B", 5, 21, "marketing_agency", "Marketing agency"), ...WEST_JORDAN.slice(2)];
+    // One of the top 3 is a marketing agency like the lead: the category isn't the problem.
+    expect(diagnose(lead({ placeId: "zzz", primaryType: "marketing_agency", category: "Marketing agency" }), mixedCats, Q, null).case).toBe("C");
+    const ranked = diagnose(lead({ primaryType: "marketing_agency", category: "Marketing agency" }), WEST_JORDAN, Q, null);
+    expect(ranked.case).toBe("B");
+    expect(ranked.say).toMatch(/ranks you lower/);
+    // A search for a trade they don't offer can't be a category problem.
+    expect(diagnose(lead({ placeId: "zzz", primaryType: "marketing_agency" }), WEST_JORDAN, Q, null, { offersService: false }).case).toBe("C");
   });
 
   it("G: already top 3, even under 4.5 stars", () => {
@@ -77,25 +99,51 @@ describe("diagnose (spec §3.3)", () => {
   });
 });
 
-describe("call order (spec §3.4)", () => {
-  it("puts one clear gap first, top 3 with a weak site second, and skips top 3 with a good site", () => {
-    expect(callPriority("E", noFlags)).toBe(1);
-    expect(callPriority("B", noFlags)).toBe(1);
-    expect(callPriority("D", noFlags)).toBe(1);
-    expect(callPriority("G", { ...noFlags, noCall: true })).toBe(2);
-    expect(callPriority("F", noFlags)).toBe(3);
-    expect(callPriority("A", noFlags)).toBe(4);
-    expect(callPriority("C", noFlags)).toBe(4);
-    expect(callPriority("G", noFlags)).toBe(SKIP);
+describe("call order (Oct 28 2026 brief §6)", () => {
+  const P = (kase: Parameters<typeof callPriority>[0]["case"], rank: number | null, flags = noFlags, more: { locationMismatch?: boolean; paying?: boolean } = {}) =>
+    callPriority({ case: kase, rank, flags, ...more });
+  const weak = { ...noFlags, grade: "Weak" as const };
+  const strong = { ...noFlags, grade: "Strong" as const, noCall: true };
+
+  it("1+: paying an agency or lead service and #4–20, even with no other gap", () => {
+    expect(P("F", 7, noFlags, { paying: true })).toBe(0);
+    expect(P("E", 12, noFlags, { paying: true })).toBe(0);
+    expect(P("C", null, noFlags, { paying: true })).toBe(4); // not in the top 20: most work
   });
 
-  it("filters cold leads, never inbound ones", () => {
+  it("1: #4–20 with a clear gap: category, rating, real review gap, location mismatch or weak site", () => {
+    expect(P("E", 4)).toBe(1);
+    expect(P("B", 9)).toBe(1);
+    expect(P("D", 5)).toBe(1);
+    expect(P("F", 6, noFlags, { locationMismatch: true })).toBe(1);
+    expect(P("F", 6, weak)).toBe(1);
+    expect(P("F", 6, { ...noFlags, noSite: true })).toBe(1);
+  });
+
+  it("2: top 3 with a weak or no website; Skip: top 3 with a site that passes", () => {
+    expect(P("G", 2, weak)).toBe(2);
+    expect(P("G", 1, { ...noFlags, noSite: true })).toBe(2);
+    expect(P("G", 1, strong)).toBe(SKIP); // graded: one red flag doesn't make a strong site weak
+    expect(P("G", 1, { ...noFlags, grade: "OK" })).toBe(SKIP);
+    expect(P("G", 3, { ...noFlags, noCall: true })).toBe(2); // no grade yet: any flag counts
+  });
+
+  it("3: close, no clear gap; 4: not in the top 20 or not on Google", () => {
+    expect(P("F", 8)).toBe(3);
+    expect(P("A", null)).toBe(4);
+    expect(P("C", null)).toBe(4);
+    expect(P("B", null)).toBe(4);
+  });
+
+  it("removes excluded categories, closed, under 4.0 and no street address; never inbound", () => {
     const l = { ...lead({ rating: 3.8 }), address: "123 Main St, Provo" };
     expect(skipReason(l, false)).toMatch(/under 4.0/);
     expect(skipReason(l, true)).toBeNull();
-    expect(skipReason({ ...lead({ reviews: 0 }), address: "1 Main" }, false)).toBe("No Google reviews");
+    expect(skipReason({ ...lead({ reviews: 0 }), address: "1 Main" }, false)).toBeNull(); // no reviews isn't a removal any more
     expect(skipReason({ ...lead(), address: "Provo, UT" }, false)).toMatch(/No street address/);
     expect(skipReason({ ...lead(), address: "9 Center St" }, false)).toBeNull();
+    expect(skipReason({ ...lead(), address: "9 Center St" }, false, "Excluded category: Labor union")).toBe("Excluded category: Labor union");
+    expect(skipReason({ ...lead(), address: "9 Center St" }, true, "Excluded category: Labor union")).toBeNull();
   });
 });
 

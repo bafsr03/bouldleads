@@ -19,6 +19,8 @@ export type CheckLead = {
   check_opened_at: number | null;
   check_opens: number;
   lead_source: string | null;
+  check_case?: string | null;
+  check_note?: string | null; // why there's no check: excluded category, or no customer search
   lead_contact: { name?: string | null; email?: string | null; service?: string | null; message?: string | null; utm?: Record<string, string> | null } | null;
   audit_manual: { checks?: Record<string, "pass" | "fail">; lastMonthLeads?: string };
 };
@@ -117,6 +119,8 @@ export function TopCheckPanel({ lead: l, onChange }: { lead: CheckLead; onChange
         </Button>
       </div>
 
+      {!c && l.check_case === "none" && l.check_note && <Notice tone="amber">{l.check_note}</Notice>}
+
       {c && (
         <>
           <div className="overflow-x-auto">
@@ -166,9 +170,28 @@ export function TopCheckPanel({ lead: l, onChange }: { lead: CheckLead; onChange
 
           {c.skip && c.priority === SKIP && <Notice tone="amber">Filtered out of the call list: {c.skip}.</Notice>}
 
+          {!!c.findings?.length && (
+            <ul className="space-y-1 text-sm">
+              {c.findings.map((f) => (
+                <li key={f} className="rounded-md bg-amber-50 px-2 py-1 text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+                  “{f}”
+                </li>
+              ))}
+            </ul>
+          )}
+
           {flags && (
             <div className="flex flex-wrap gap-2 text-xs">
-              <Flag bad={flags.noSite} ok="Has a website" no="No website: Website Build pitch" />
+              {flags.noSite ? (
+                <Flag bad ok="" no="No website: Website Build pitch" />
+              ) : c.grade ? (
+                <Badge tone={c.grade.grade === "Weak" ? "red" : c.grade.grade === "OK" ? "amber" : "green"}>
+                  Site: {c.grade.grade}
+                  {c.grade.weakest.length > 0 && ` · ${c.grade.weakest.join(" · ")}`}
+                </Badge>
+              ) : (
+                <Flag bad={false} ok="Has a website (not graded yet)" no="" unknown />
+              )}
               {!flags.noSite && (
                 <>
                   <Flag

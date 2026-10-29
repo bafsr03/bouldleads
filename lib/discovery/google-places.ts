@@ -4,6 +4,8 @@ import { googleFields, textSearchPage, type GooglePlace } from "./google-api";
 import { resolveCategory } from "./match";
 import { normalizeWebsite, socialUrl, type BBox, type ContactMode, type DiscoveredBusiness, type SearchArea, areaBbox, quarter } from "./overpass";
 import { sleep } from "./http";
+import { exclusionLists } from "../settings";
+import { excludedReason } from "../check/terms";
 
 // Lead source: Google Places API (New) Text Search.
 // Google returns at most 60 results (3 pages × 20) per query, so when a query fills all 60
@@ -44,8 +46,10 @@ function toBusiness(p: GooglePlace, term: string, typeLabel: string | null): Dis
 }
 
 // Gas stations, casinos, pawn shops…: not Bould prospects unless that's exactly what was searched (see fit.ts).
-const keep = (b: DiscoveredBusiness, mode: ContactMode, primaryType?: string, searched?: string | null) =>
+// Excluded categories (Settings: unions, churches, schools…, retail unless it's a retail search) never become leads.
+const keep = (b: DiscoveredBusiness, mode: ContactMode, primaryType: string | undefined, searched: string | null | undefined, lists: { excluded: string[]; retail: string[] }) =>
   b.google?.status !== "CLOSED_PERMANENTLY" &&
+  !excludedReason({ category: b.category, google_type: b.google?.type ?? null, primaryType }, lists) &&
   !(primaryType && NOT_A_BUSINESS_TYPES.has(primaryType)) &&
   !nonFitReason({ name: b.name, primaryType, googleLabel: b.google?.type, categoryId: BUSINESS_TYPES.find((t) => t.label === searched)?.id }) &&
   (mode === 0 || !!b.website || (mode === 2 && !!b.phone));
@@ -68,6 +72,7 @@ export async function googleSearch(
   const terms = googleQueriesFor(selection, opts.countryCode ?? null);
   const where = area.type === "place" ? ` in ${area.label.split(",").slice(0, 2).join(",")}` : "";
   const seen = new Map<string, DiscoveredBusiness>();
+  const lists = await exclusionLists();
   let requests = 0;
 
   async function searchRect(term: { text: string; lang: string | null; type: string | null }, [s, w, n, e]: BBox, depth: number) {
@@ -81,7 +86,7 @@ export async function googleSearch(
       for (const p of j.places ?? []) {
         got++;
         const b = toBusiness(p, term.text, term.type);
-        if (!seen.has(p.id) && keep(b, contactMode, p.primaryType, term.type) && inCircle(area, b)) seen.set(p.id, b);
+        if (!seen.has(p.id) && keep(b, contactMode, p.primaryType, term.type, lists) && inCircle(area, b)) seen.set(p.id, b);
       }
       pageToken = j.nextPageToken;
       if (!pageToken) break;

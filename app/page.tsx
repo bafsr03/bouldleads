@@ -1,6 +1,7 @@
 "use client";
 
 import { PITCHES } from "@/lib/audit/score";
+import { badReasonLabel } from "@/lib/call-outcomes";
 import { ArrowRight, Check } from "lucide-react";
 import Link from "next/link";
 import { BarList } from "@/components/bar-list";
@@ -43,7 +44,69 @@ type Report = {
   byPitch: Group[];
   byHour: { hour: number; dials: number; answered: number }[];
   followupSteps: { step: number; sent: number; replied: number }[];
+  weekly?: { week: string; calls: number; conversations: number; screenShares: number; closes: number; badLeads: number }[];
+  badBySearch?: { k: string; leads: number; bad: number }[];
+  badByCity?: { k: string; leads: number; bad: number }[];
+  badReasons?: { k: string | null; n: number }[];
 };
+
+/** Calls, conversations, screen shares, closes and bad leads per week (Oct 28 2026 brief §7). */
+function WeeklyCard({ report }: { report: Report }) {
+  const weeks = report.weekly ?? [];
+  const bad = (rows: { k: string; leads: number; bad: number }[] | undefined) =>
+    (rows ?? []).map((r) => ({ label: r.k, value: r.bad, note: `bad of ${fmt(r.leads)} called · ${pct(r.bad, r.leads)}` }));
+  return (
+    <Card className="lg:col-span-2">
+      <h2 className="font-semibold">Weekly numbers</h2>
+      <p className="mb-3 text-xs text-muted">Weeks start Monday. Conversations = talked to someone who can decide; screen shares = booked.</p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm tabular-nums">
+          <thead className="text-left text-xs uppercase tracking-wide text-muted">
+            <tr>
+              <th className="py-1.5 pr-3 font-medium">Week of</th>
+              <th className="py-1.5 pr-3 text-right font-medium">Calls</th>
+              <th className="py-1.5 pr-3 text-right font-medium">Conversations</th>
+              <th className="py-1.5 pr-3 text-right font-medium">Screen shares</th>
+              <th className="py-1.5 pr-3 text-right font-medium">Closes</th>
+              <th className="py-1.5 text-right font-medium">Bad leads</th>
+            </tr>
+          </thead>
+          <tbody>
+            {weeks.map((w) => (
+              <tr key={w.week} className="border-t border-border/60">
+                <td className="py-1.5 pr-3">{new Date(`${w.week}T12:00:00Z`).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</td>
+                <td className="py-1.5 pr-3 text-right">{fmt(w.calls)}</td>
+                <td className="py-1.5 pr-3 text-right">
+                  {fmt(w.conversations)} <span className="text-xs text-muted">{pct(w.conversations, w.calls)}</span>
+                </td>
+                <td className="py-1.5 pr-3 text-right">{fmt(w.screenShares)}</td>
+                <td className="py-1.5 pr-3 text-right">{fmt(w.closes)}</td>
+                <td className="py-1.5 text-right">
+                  {fmt(w.badLeads)} <span className="text-xs text-muted">{pct(w.badLeads, w.calls)}</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="mt-4 grid gap-6 sm:grid-cols-2">
+        <div>
+          <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">Bad-lead rate by search (4 weeks)</h3>
+          <BarList emptyText="No calls in the last 4 weeks." rows={bad(report.badBySearch)} />
+        </div>
+        <div>
+          <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">Bad-lead rate by city (4 weeks)</h3>
+          <BarList emptyText="No calls in the last 4 weeks." rows={bad(report.badByCity)} />
+        </div>
+      </div>
+      {!!report.badReasons?.length && (
+        <p className="mt-3 text-xs text-muted">
+          Why they were bad: {report.badReasons.map((r) => `${badReasonLabel(r.k)} ${fmt(r.n)}`).join(" · ")}
+        </p>
+      )}
+    </Card>
+  );
+}
 
 const PITCH_NAME: Record<string, string> = { ...PITCHES, unknown: "Before pitch tags" };
 const TIER_NAME: Record<string, string> = { A: "Tier A", B: "Tier B", C: "Tier C", not_fit: "Not a fit", unscored: "Not audited" };
@@ -134,6 +197,7 @@ export default function Overview() {
 
       {report && report.totals.dials > 0 && (
         <div className="mt-6 grid gap-6 lg:grid-cols-2">
+          <WeeklyCard report={report} />
           <Card>
             <h2 className="font-semibold">Calls by lead tier</h2>
             <p className="mb-3 text-xs text-muted">Does the audit pick the right people? Answered = any outcome other than no answer, voicemail, wrong or disconnected number.</p>

@@ -7,8 +7,9 @@ import { Suspense, useState } from "react";
 import { Button, Card, Notice, PageHeader, StatusBadge, Textarea, ago, cx } from "@/components/ui";
 import { PitchBadge, Rating, ScoreMeter, SiteChip, StageBadge, TierBadge, followupText, outcomeLabel } from "@/components/score";
 import { AskFor } from "@/components/ask-for";
-import { WARM_MAX } from "@/lib/call-outcomes";
+import { WARM_MAX, badReasonLabel } from "@/lib/call-outcomes";
 import { CallActions, LocalTime } from "@/components/call-actions";
+import { CallFacts } from "@/components/call-facts";
 import { CategoryLabel } from "@/components/category-label";
 import { send, useApi } from "@/components/use-api";
 import { useEmailOn } from "@/components/use-flags";
@@ -55,6 +56,11 @@ type Lead = {
   dnc: number;
   phone_bad: number;
   ask_for: string | null;
+  talked_to: string | null;
+  site_builder: string | null;
+  marketing_spend: string | null;
+  next_step: string | null;
+  bad_reason: string | null;
   social_url: string | null;
   found_site: string | null;
   found_site_how: string | null;
@@ -67,7 +73,7 @@ type Lead = {
   search: { id: number; label: string; place: string | null } | null;
   outreach: { state: string; step: number; updated_at: number; campaign_id: number; campaign: string; kind: string }[];
   replies: { kind: string; subject: string | null; snippet: string | null; received_at: number }[];
-  calls: { id: number; outcome: string; note: string | null; user: string | null; created_at: number }[];
+  calls: { id: number; outcome: string; note: string | null; user: string | null; created_at: number; bad_reason: string | null }[];
   emails: { step: number; subject: string; sent_at: number; campaign: string }[];
   followup: { state: string; step: number; steps: number; nextSendAt: number | null } | null;
   followupBlocked: string | null;
@@ -77,7 +83,13 @@ type Event = { at: number; kind: "call" | "email" | "reply"; title: string; deta
 
 function timeline(l: Lead): Event[] {
   return [
-    ...l.calls.map((c) => ({ at: c.created_at, kind: "call" as const, title: outcomeLabel(c.outcome), detail: c.note, by: c.user })),
+    ...l.calls.map((c) => ({
+      at: c.created_at,
+      kind: "call" as const,
+      title: c.bad_reason ? `${outcomeLabel(c.outcome)}: ${badReasonLabel(c.bad_reason).toLowerCase()}` : outcomeLabel(c.outcome),
+      detail: c.note,
+      by: c.user,
+    })),
     ...l.emails.map((e) => ({ at: e.sent_at, kind: "email" as const, title: `Email ${e.step + 1} sent: ${e.subject}`, detail: e.campaign })),
     ...l.replies.map((r) => ({
       at: r.received_at,
@@ -233,6 +245,7 @@ function LeadInner() {
       ) : (
         <CallActions lead={l} onDone={reload} />
       )}
+      <CallFacts lead={l} onSaved={reload} />
       {l.callback_at && (
         <p className="text-sm">
           <span className="text-muted">Call back:</span>{" "}

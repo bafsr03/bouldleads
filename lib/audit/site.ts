@@ -1,6 +1,7 @@
 import * as cheerio from "cheerio";
 import { robotsAllows } from "../enrich/crawl";
 import { fetchWithTimeout } from "../discovery/http";
+import { US_STATES } from "../check/terms";
 
 // Website facts for the conversion side of the audit: "when customers find the business, do they call?"
 // One polite request to the homepage (robots.txt respected). Everything here is measured, not guessed.
@@ -46,6 +47,16 @@ export type SiteFacts = {
   pageSpeed: number | null; // Google PageSpeed mobile performance 0-100, when enabled
   contactPage: string | null; // contact page we also checked (form / tap-to-call found there count)
   textChars: number; // visible text on the homepage, to spot JavaScript-only pages
+  // Website quality (Lead Sourcing & Scoring Improvements §5). Optional: audits before Oct 29 2026 lack them.
+  words?: number; // homepage word count
+  contentPages?: number; // internal pages beyond home/about/contact/blog/legal: their service pages
+  servicesListed?: number; // services named in a "services" section of the homepage
+  workPhotos?: number; // images that aren't logos, icons, badges or stock
+  stockPhotos?: number;
+  builder?: string | null; // "Website by Big West Marketing" in the footer
+  leadServices?: string[]; // HomeAdvisor, Angi, Thumbtack, Porch, Yelp badges or links: they pay for leads
+  addressCities?: string[]; // towns in addresses on the site ("Zumbrota, MN 55992" → "Zumbrota")
+  mentionsCity?: boolean | null; // the searched city appears in the text (null = no city to look for)
 };
 
 export type SiteCause = "dns" | "refused" | "server" | "timeout" | "tls" | "reset" | "challenge" | "http" | "robots" | "type";
@@ -126,7 +137,54 @@ const QUOTE_LINK = /quote|estimate|contact|cotiza|presupuesto|contacto|orçament
 const phoneDigits = (s: string) => s.replace(/\D/g, "");
 const PHONE_RE = /(?:\+?\d[\d\s().-]{7,16}\d)/g;
 
-export function analyzeHtml(html: string, finalUrl: string): Omit<SiteFacts, "reachable" | "error" | "socialOnly" | "loadMs" | "pageSpeed" | "contactPage"> {
+// Pages every site has: anything else linked from the homepage is a page about what they do.
+const GENERIC_PAGE =
+  /^\/?$|^\/(index\.\w+|home|about|about-us|contact|contact-us|privacy|privacy-policy|terms|blog|news|login|account|cart|checkout|sitemap|faq|faqs|careers|jobs|reviews?|testimonials|gallery|portfolio|photos|team|our-team|wp-|feed|tag\/|category\/|author\/|cdn-cgi)/i;
+const LOGO_IMG = /logo|icon|badge|sprite|avatar|favicon|spacer|pixel|placeholder|blank\.gif|\.svg(\?|$)|seal|award|bbb|homeadvisor|angi|thumbtack|google|facebook|yelp|instagram|payment|visa|mastercard|arrow|button|banner-ad/i;
+const STOCK_IMG = /shutterstock|istockphoto|gettyimages|unsplash|pexels|adobestock|stock\.adobe|depositphotos|dreamstime|123rf|pixabay|stock[-_]?photo/i;
+// Site builders (platforms) aren't the agency they pay: "Powered by WordPress" names no one.
+const PLATFORM_NAME =
+  /^(wordpress|wix|squarespace|godaddy|shopify|weebly|duda|webflow|square|google|jimdo|elementor|divi|genesis|astra|hostinger|bluehost|yola|site123|strikingly|homestead|web\.com|network solutions|vistaprint|wp engine|the events calendar|hubspot|cloudflare|wpengine)\b/i;
+const BUILDER_RE =
+  /\b(?:website|web site|site|web design|designed|design|built|developed|created|crafted|made|powered|hosted|managed|maintained|marketing)\s+(?:and\s+\w+\s+)?by\s*:?\s+([^|•·©\n]{2,70})/i;
+const LEAD_SERVICES: [string, RegExp][] = [
+  ["HomeAdvisor", /homeadvisor/i],
+  ["Angi", /angi\.com|angieslist|angi-badge|\/angi[-_]/i],
+  ["Thumbtack", /thumbtack/i],
+  ["Porch", /porch\.com/i],
+  ["Yelp", /yelp\.[a-z.]+\/biz|yelp-badge/i],
+];
+const STATE_NAMES = Object.values(US_STATES).join("|");
+const ADDRESS_CITY = new RegExp(`([A-Z][a-zA-Z.'-]+(?:\\s+[A-Z][a-zA-Z.'-]+){0,3}),\\s*(?:${Object.keys(US_STATES).join("|")}|${STATE_NAMES})(?:\\s+\\d{5}(?:-\\d{4})?)?(?![a-zA-Z])`, "g");
+const STREET_WORD = /^(st|street|ave|avenue|rd|road|dr|drive|blvd|boulevard|hwy|highway|ln|lane|ct|court|way|pkwy|parkway|pl|place|cir|circle|ter|suite|ste|unit|nw|ne|sw|se|n|s|e|w|north|south|east|west|po|box|serving|in|of|and|call|visit|located|proudly|areas?)$/i;
+
+/** "123 Main St Zumbrota, MN 55992" → "Zumbrota": the last words before ", ST" that aren't street words. */
+export function citiesIn(text: string): string[] {
+  const out = new Set<string>();
+  for (const m of text.matchAll(ADDRESS_CITY)) {
+    const words = m[1].split(/\s+/);
+    let i = words.length;
+    while (i > 0 && !STREET_WORD.test(words[i - 1]) && !/\d/.test(words[i - 1])) i--;
+    const city = words.slice(i).join(" ").trim();
+    if (city && city.length >= 3 && !US_STATES[city.toUpperCase()]) out.add(city);
+  }
+  return [...out].slice(0, 12);
+}
+
+/** "Website by Big West Marketing | Privacy" → "Big West Marketing"; platforms (WordPress, Wix…) → null. */
+export function builderIn(footerText: string): string | null {
+  const m = footerText.replace(/\s+/g, " ").match(BUILDER_RE);
+  if (!m) return null;
+  let name = m[1]
+    .split(/\s+[-–|]\s+|\s{2,}|\b(?:privacy|all rights|copyright|terms|sitemap|accessibility)\b|\b(?:19|20)\d{2}\b/i)[0]
+    .trim()
+    .replace(/[.,;:!]+$/, "");
+  name = name.split(" ").slice(0, 5).join(" ");
+  if (name.length < 2 || PLATFORM_NAME.test(name) || /^(the|our|a|us|you)$/i.test(name)) return null;
+  return name.slice(0, 60);
+}
+
+export function analyzeHtml(html: string, finalUrl: string, ctx: { city?: string | null } = {}): Omit<SiteFacts, "reachable" | "error" | "socialOnly" | "loadMs" | "pageSpeed" | "contactPage"> {
   const $ = cheerio.load(html);
   const url = new URL(finalUrl);
   const links = $("a[href]")
@@ -179,6 +237,39 @@ export function analyzeHtml(html: string, finalUrl: string): Omit<SiteFacts, "re
     if (QUOTE_LINK.test(href) || QUOTE_LINK.test(label)) quoteLink = true;
   });
 
+  const pages = new Set<string>();
+  for (const h of links) {
+    try {
+      const u = new URL(h, url);
+      if (u.hostname.replace(/^www\./, "") !== url.hostname.replace(/^www\./, "") || !/^https?:$/.test(u.protocol)) continue;
+      const path = u.pathname.replace(/\/+$/, "").toLowerCase();
+      if (!GENERIC_PAGE.test(path || "/") && !/\.(pdf|jpe?g|png|gif|webp|docx?|zip)$/.test(path)) pages.add(path);
+    } catch {}
+  }
+  let servicesListed = 0;
+  $("h1, h2, h3, h4").each((_, h) => {
+    if (!/services|what we do|we offer|our work/i.test($(h).text())) return;
+    const section = $(h).parent();
+    const items = section.find("li").length || Math.max(0, section.find("h3, h4, h5").length - ($(h).is("h3, h4") ? 1 : 0));
+    servicesListed = Math.max(servicesListed, items);
+  });
+  let workPhotos = 0;
+  let stockPhotos = 0;
+  imgs.each((_, i) => {
+    const el = $(i);
+    const src = el.attr("src") || el.attr("data-src") || el.attr("data-lazy-src") || el.attr("srcset") || "";
+    const sig = `${src} ${el.attr("alt") ?? ""} ${el.attr("class") ?? ""} ${el.attr("id") ?? ""}`;
+    const w = Number(el.attr("width"));
+    const hgt = Number(el.attr("height"));
+    if (LOGO_IMG.test(sig) || (w > 0 && w < 100) || (hgt > 0 && hgt < 100)) return;
+    if (STOCK_IMG.test(sig)) stockPhotos++;
+    else workPhotos++;
+  });
+  const footer = $("footer, [class*=footer], [id*=footer]").last();
+  const footerText = footer.length ? footer.text() : text.slice(-1500);
+  const marks = links.join(" ") + " " + imgs.map((_, i) => `${$(i).attr("src") ?? ""} ${$(i).attr("alt") ?? ""}`).get().join(" ");
+  const city = ctx.city?.trim();
+
   return {
     url: url.toString(),
     https: url.protocol === "https:",
@@ -205,6 +296,15 @@ export function analyzeHtml(html: string, finalUrl: string): Omit<SiteFacts, "re
     images: imgs.length,
     imagesNoAlt: imgs.filter((_, i) => !($(i).attr("alt") ?? "").trim()).length,
     textChars: text.trim().length,
+    words: text.trim() ? text.trim().split(/\s+/).length : 0,
+    contentPages: pages.size,
+    servicesListed: Math.min(servicesListed, 40),
+    workPhotos,
+    stockPhotos,
+    builder: builderIn(footerText) ?? builderIn(text.slice(-2500)),
+    leadServices: LEAD_SERVICES.filter(([, re]) => re.test(marks)).map(([n]) => n),
+    addressCities: citiesIn(text),
+    mentionsCity: city ? new RegExp(`\\b${city.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text) : null,
   };
 }
 
@@ -365,7 +465,7 @@ export async function fetchHome(url: string, timeoutMs = 15000): Promise<Fetched
   }
 }
 
-export async function checkSite(website: string, opts: { pageSpeed: boolean; googleKey?: string }): Promise<SiteFacts> {
+export async function checkSite(website: string, opts: { pageSpeed: boolean; googleKey?: string; city?: string | null }): Promise<SiteFacts> {
   const host = new URL(website).hostname.replace(/^www\./, "");
   if (SOCIAL_ONLY.test(host)) return { ...EMPTY, reachable: true, error: null, socialOnly: true, url: website };
   if (DIRECTORY_HOST.test(host)) return { ...EMPTY, reachable: true, error: null, socialOnly: false, directory: true, url: website };
@@ -416,7 +516,7 @@ export async function checkSite(website: string, opts: { pageSpeed: boolean; goo
   if (page.ok && (PARKED.test(page.html) || /^\/lander\b/i.test(new URL(page.finalUrl).pathname))) page = { ok: false, error: "parked", cause: null };
   if (!page.ok) return { ...EMPTY, reachable: false, error: page.error, cause: page.cause, socialOnly: false, url: website };
 
-  const facts = analyzeHtml(page.html, page.finalUrl);
+  const facts = analyzeHtml(page.html, page.finalUrl, { city: opts.city });
   const finalHost = new URL(page.finalUrl).hostname.replace(/^www\./, "");
   if (DIRECTORY_HOST.test(finalHost)) return { ...EMPTY, reachable: true, error: null, socialOnly: false, directory: true, url: page.finalUrl };
   if (isScriptOnly(page.html, facts.textChars))
@@ -428,8 +528,13 @@ export async function checkSite(website: string, opts: { pageSpeed: boolean; goo
     const cu = contactUrl(page.html, page.finalUrl);
     const contact = cu && allowed(new URL(cu).pathname) ? await fetchHome(cu) : null;
     if (contact?.ok && !PARKED.test(contact.html)) {
-      const c = analyzeHtml(contact.html, contact.finalUrl);
+      const c = analyzeHtml(contact.html, contact.finalUrl, { city: opts.city });
       if (!c.form && c.formMaybe) facts.formMaybe = true;
+      // The contact page usually holds the address and the town: it counts for where they are.
+      facts.addressCities = [...new Set([...(facts.addressCities ?? []), ...(c.addressCities ?? [])])];
+      if (c.mentionsCity) facts.mentionsCity = true;
+      facts.builder ??= c.builder;
+      facts.leadServices = [...new Set([...(facts.leadServices ?? []), ...(c.leadServices ?? [])])];
       if (c.form || c.tapToCall || c.whatsapp || c.booking) {
         contactPage = contact.finalUrl;
         facts.form ||= c.form;

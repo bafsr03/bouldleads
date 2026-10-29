@@ -21,6 +21,7 @@ export type BizType = {
   names?: string[]; // name keywords, matched case-insensitively on businesses with a commercial tag
   google: string[];
   gtypes?: string[]; // Google Places types that confirm a place is this type (see GOOGLE_TYPES)
+  search?: string; // what customers type for the top-3 check, when it isn't google[0] (lib/check/terms.ts)
 };
 
 export const GROUPS = [
@@ -207,6 +208,10 @@ export const BUSINESS_TYPES: BizType[] = [
   t("epoxy_floors", "Epoxy floor coatings", "trades", [], ["epoxy flooring contractor"], ["epoxy", "garage floor"]),
   t("carpet_cleaning", "Carpet & upholstery cleaning", "trades", [craft("carpet_cleaner")], ["carpet cleaning service", "upholstery cleaning"], ["carpet", "upholstery"]),
   t("septic", "Septic & excavation", "trades", [], ["septic service", "excavation contractor"], ["septic", "excavat"]),
+  // Rochester, MN calls (Oct 28 2026): trades that were filed as plumbers or builders.
+  t("waterproofing", "Basement waterproofing", "trades", [], ["basement waterproofing"], ["waterproof", "basement", "foundation repair", "mudjack"]),
+  t("deck_builder", "Deck builders", "trades", [], ["deck builder"], ["deck", "decks", "patio cover", "pergola"]),
+  t("remodeling", "Remodeling", "trades", [], ["remodeling contractor", "kitchen remodeler", "bathroom remodeler"], ["remodel", "renovation", "kitchen and bath"]),
 
   // Hotels & travel
   t("hotel", "Hotels & motels", "hospitality", [tourism("hotel", "motel")], ["hotel"]),

@@ -1,6 +1,6 @@
 import tzlookup from "tz-lookup";
 import { db, logEvent, now } from "./db";
-import { getSettings } from "./settings";
+import { getSettings, saveSettings } from "./settings";
 import { isSuppressed, suppress } from "./outreach/suppression";
 import { FOLLOWUP_STEPS } from "./outreach/templates";
 import type { CampaignRow } from "./outreach/campaigns";
@@ -11,9 +11,9 @@ import type { CampaignRow } from "./outreach/campaigns";
 //   Wrong number / Number disconnected → mark the phone bad (emails continue if there is an address)
 
 export { OUTCOMES, STAGES, isOutcome, type Outcome } from "./call-outcomes";
-import { BAD_PHONE, NOT_REACHED, OUTCOMES, WARM_MAX, WARM_RETRY, type Outcome } from "./call-outcomes";
+import { BAD_PHONE, NOT_REACHED, OUTCOMES, WARM_MAX, WARM_RETRY, type BadReason, type Outcome } from "./call-outcomes";
 
-const STOPS_EMAIL: Outcome[] = ["call_back", "audit_booked", "won", "not_interested", "do_not_call"];
+const STOPS_EMAIL: Outcome[] = ["call_back", "audit_booked", "won", "not_interested", "do_not_call", "bad_lead"];
 
 /**
  * Where a lead is in the call-first flow. SQL expression over the `businesses` table (unaliased).
@@ -23,7 +23,7 @@ const STOPS_EMAIL: Outcome[] = ["call_back", "audit_booked", "won", "not_interes
  */
 export const STAGE_SQL = `CASE
   WHEN businesses.dnc = 1 OR businesses.phone_bad = 1
-    OR businesses.call_outcome IN ('not_interested', 'do_not_call', 'wrong_number', 'disconnected') THEN 'closed'
+    OR businesses.call_outcome IN ('not_interested', 'do_not_call', 'wrong_number', 'disconnected', 'bad_lead') THEN 'closed'
   WHEN businesses.call_outcome IN ('audit_booked', 'won') THEN 'booked'
   WHEN EXISTS (SELECT 1 FROM campaign_leads x WHERE x.business_id = businesses.id AND x.state = 'replied') THEN 'replied'
   WHEN businesses.callback_at IS NOT NULL THEN 'callback'
@@ -160,13 +160,13 @@ function leadTz(lat: number | null, lng: number | null): string | null {
 export async function logCall(
   businessId: number,
   outcome: Outcome | null,
-  opts: { note?: string | null; callbackAt?: number | null; user?: string | null; startFollowup?: boolean; now?: number } = {},
+  opts: { note?: string | null; callbackAt?: number | null; user?: string | null; startFollowup?: boolean; now?: number; badReason?: BadReason | null } = {},
 ): Promise<CallResult> {
   if (outcome === null) {
     // Undo a mis-tapped Wrong number / Number disconnected too: the phone is good again.
     await db.run(
-      `UPDATE businesses SET phone_bad = CASE WHEN call_outcome IN (${BAD_PHONE.map(() => "?").join(", ")}) THEN 0 ELSE phone_bad END,
-         call_outcome = NULL, callback_at = NULL, warm_tries = 0 WHERE id = ?`,
+      `UPDATE businesses SET phone_bad = CASE WHEN call_outcome IN (${BAD_PHONE.map(() => "?").join(", ")}) OR bad_reason = 'wrong_number' THEN 0 ELSE phone_bad END,
+         call_outcome = NULL, callback_at = NULL, warm_tries = 0, bad_reason = NULL WHERE id = ?`,
       ...BAD_PHONE,
       businessId,
     );
@@ -188,30 +188,35 @@ export async function logCall(
     else tries = 0; // 6 misses: back to the normal Call again list
   }
   const staysWarm = callbackAt != null;
+  const bad = outcome === "bad_lead" ? (opts.badReason ?? null) : null;
+  const phoneBad = outcome === "wrong_number" || outcome === "disconnected" || bad === "wrong_number";
   await db.batch([
     [
-      `INSERT INTO calls (business_id, outcome, note, user, created_at, pitch)
-       VALUES (?, ?, ?, ?, ?, (SELECT json_extract(audit, '$.pitch.key') FROM businesses WHERE id = ?))`,
+      `INSERT INTO calls (business_id, outcome, note, user, created_at, pitch, bad_reason)
+       VALUES (?, ?, ?, ?, ?, (SELECT json_extract(audit, '$.pitch.key') FROM businesses WHERE id = ?), ?)`,
       businessId,
       outcome,
       opts.note?.trim() || null,
       opts.user ?? null,
       t,
       businessId,
+      bad,
     ],
     [
       `UPDATE businesses SET call_outcome = ?, called_at = ?, call_attempts = call_attempts + 1, callback_at = ?, warm_tries = ?,
-         dnc = CASE WHEN ? = 'do_not_call' THEN 1 ELSE dnc END, phone_bad = CASE WHEN ? IN ('wrong_number', 'disconnected') THEN 1 ELSE phone_bad END
+         dnc = CASE WHEN ? = 'do_not_call' THEN 1 ELSE dnc END, phone_bad = CASE WHEN ? = 1 THEN 1 ELSE phone_bad END, bad_reason = ?
        WHERE id = ?`,
       outcome,
       t,
       callbackAt,
       tries,
       outcome,
-      outcome,
+      phoneBad ? 1 : 0,
+      bad,
       businessId,
     ],
   ]);
+  if (bad === "not_customer") await excludeCategoryOf(businessId);
 
   if (STOPS_EMAIL.includes(outcome)) await stopEmails(businessId);
   if (outcome === "do_not_call") {
@@ -229,6 +234,21 @@ export async function logCall(
   const err = await startFollowup(businessId);
   if (err) await logEvent("info", `Lead #${businessId}: no follow-up email (${err})`);
   return { followup: err ? "skipped" : "started", followupError: err };
+}
+
+/**
+ * "Bad lead: not a customer" feeds the filter (§7): the lead's Google category joins Settings →
+ * Excluded categories, so the next search skips the rest of them (a union, a church).
+ */
+export async function excludeCategoryOf(businessId: number): Promise<string | null> {
+  const b = await db.get<{ google_type: string | null }>("SELECT google_type FROM businesses WHERE id = ?", businessId);
+  const label = b?.google_type?.trim();
+  if (!label || /^(services?|store|point of interest|establishment)$/i.test(label)) return null;
+  const s = await getSettings();
+  if (s.excludedCategories.some((x) => x.toLowerCase() === label.toLowerCase())) return label;
+  await saveSettings({ excludedCategories: [...s.excludedCategories, label] });
+  await logEvent("info", `Bad lead (not a customer): "${label}" added to the excluded categories.`);
+  return label;
 }
 
 /** "2026-10-16" for a moment in a time zone (falls back to UTC for an unknown zone). */

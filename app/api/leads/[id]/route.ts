@@ -6,6 +6,7 @@ import { VISIBILITY_CHECKS, type ManualAnswers } from "@/lib/audit/score";
 import { STAGE_SQL, cannotFollowUp, followupFor, isOutcome, logCall, startFollowup, stopEmails } from "@/lib/calls";
 import { deleteLeads } from "@/lib/leads";
 import { currentUser } from "@/lib/auth";
+import { isBadReason } from "@/lib/call-outcomes";
 
 // The Deep audit action waits for Google and PageSpeed (up to about a minute).
 export const maxDuration = 120;
@@ -30,7 +31,7 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/leads/[id]">) {
        WHERE cl.business_id = ? ORDER BY r.received_at DESC LIMIT 20`,
       id,
     ),
-    db.all("SELECT id, outcome, note, user, created_at FROM calls WHERE business_id = ? ORDER BY created_at DESC LIMIT 50", id),
+    db.all("SELECT id, outcome, note, user, created_at, bad_reason FROM calls WHERE business_id = ? ORDER BY created_at DESC LIMIT 50", id),
     db.all(
       `SELECT m.step, m.subject, m.sent_at, c.name AS campaign FROM messages m JOIN campaign_leads cl ON cl.id = m.campaign_lead_id
        JOIN campaigns c ON c.id = cl.campaign_id WHERE cl.business_id = ? ORDER BY m.sent_at DESC LIMIT 20`,
@@ -71,7 +72,19 @@ type Patch = {
   category?: string; // what the business really is, set by hand (e.g. after checking the Google profile)
   askFor?: string | null; // who to ask for: "Jamie answers, ask for Kenny"
   lastMonthLeads?: string; // top-3 check card: "knows last month's leads", their starting numbers if they sign
+  badReason?: string; // with callOutcome "bad_lead": not_customer | already_top3 | wrong_trade | out_of_business | wrong_number
+  // What we learned on the call (Oct 28 2026 brief §7)
+  talkedTo?: string | null;
+  siteBuilder?: string | null;
+  marketingSpend?: string | null;
+  nextStep?: string | null;
 };
+
+const CALL_FIELDS = [
+  ["talkedTo", "talked_to"],
+  ["marketingSpend", "marketing_spend"],
+  ["nextStep", "next_step"],
+] as const;
 
 // Manual audit answers, notes and call outcomes. Re-scores instantly from the stored research.
 export async function PATCH(req: Request, ctx: RouteContext<"/api/leads/[id]">) {
@@ -108,11 +121,20 @@ export async function PATCH(req: Request, ctx: RouteContext<"/api/leads/[id]">) 
   }
 
   if (b.askFor !== undefined) await db.run("UPDATE businesses SET ask_for = ? WHERE id = ?", b.askFor?.trim().slice(0, 120) || null, id);
+  for (const [k, col] of CALL_FIELDS)
+    if (b[k] !== undefined) await db.run(`UPDATE businesses SET ${col} = ? WHERE id = ?`, b[k]?.trim().slice(0, 300) || null, id);
+  if (b.siteBuilder !== undefined) {
+    // Typed on the call: the audit won't overwrite it. Cleared: the footer reading takes over again.
+    const v = b.siteBuilder?.trim().slice(0, 80) || null;
+    await db.run("UPDATE businesses SET site_builder = ?, site_builder_manual = ? WHERE id = ?", v, v ? 1 : 0, id);
+  }
 
   let call = null;
   if (b.callOutcome !== undefined) {
     if (b.callOutcome !== null && !isOutcome(b.callOutcome)) return bad("Unknown outcome");
+    if (b.callOutcome === "bad_lead" && !isBadReason(b.badReason)) return bad("Pick why it's a bad lead");
     call = await logCall(id, b.callOutcome, {
+      badReason: b.callOutcome === "bad_lead" && isBadReason(b.badReason) ? b.badReason : null,
       note: b.callNote?.slice(0, 2000) || null,
       callbackAt: b.callbackAt ?? null,
       user: await currentUser(),

@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { decrypt, encrypt } from "./crypto";
+import { DEFAULT_EXCLUDED, DEFAULT_EXCLUDED_RETAIL } from "./check/terms";
 
 export type Settings = {
   companyName: string;
@@ -25,6 +26,8 @@ export type Settings = {
   followupOnNoAnswer: boolean; // "No answer" / "Voicemail" starts the email follow-up automatically
   personalTiers: string[]; // tiers worked from personal phones; the rest is the dialer list
   dialerBatchSize: number; // leads per dialer export
+  excludedCategories: string[]; // Google categories that aren't customers (unions, churches…): never a lead
+  excludedRetail: string[]; // retail/product categories: excluded unless the search was a retail list on purpose
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -51,7 +54,15 @@ export const DEFAULT_SETTINGS: Settings = {
   followupOnNoAnswer: true,
   personalTiers: ["A"],
   dialerBatchSize: 200,
+  excludedCategories: DEFAULT_EXCLUDED,
+  excludedRetail: DEFAULT_EXCLUDED_RETAIL,
 };
+
+/** The two exclusion lists, in the shape lib/check/terms.ts excludedReason takes. */
+export async function exclusionLists() {
+  const s = await getSettings();
+  return { excluded: s.excludedCategories, retail: s.excludedRetail };
+}
 
 export async function getSettings(): Promise<Settings> {
   const rows = await db.all<{ key: string; value: string }>(
