@@ -149,9 +149,9 @@ type Event = { id: number; level: string; message: string; created_at: number };
 const pct = (a: number, b: number) => (b ? `${Math.round((a / b) * 100)}%` : "—");
 
 export default function Overview() {
-  const { data: s } = useApi<Stats>("/api/stats", 5000);
-  const { data: events } = useApi<Event[]>("/api/events", 10_000);
-  const { data: report } = useApi<Report>("/api/report", 30_000);
+  const { data: s } = useApi<Stats>("/api/stats", 15_000);
+  const { data: events } = useApi<Event[]>("/api/events", 30_000);
+  const { data: report } = useApi<Report>("/api/report", 60_000);
   const verified = s?.byStatus.verified ?? 0;
 
   const steps = s

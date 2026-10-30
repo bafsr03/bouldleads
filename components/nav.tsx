@@ -31,7 +31,7 @@ export function Nav() {
   const path = usePathname();
   const hidden = path === "/login";
   const emailOn = useEmailOn();
-  const { data } = useApi<Stats>(hidden ? null : "/api/stats", 15_000);
+  const { data, error } = useApi<Stats>(hidden ? null : "/api/stats", 15_000);
   const { data: me } = useApi<{ user: string | null; authEnabled: boolean; onboarded: boolean }>(hidden ? null : "/api/auth/me");
   const cb = useCallbackAlerts(!hidden); // the nav is on every page, so callback reminders work wherever you are
   if (hidden) return null;
@@ -65,6 +65,11 @@ export function Nav() {
           </div>
         </div>
       </div>
+      {error?.startsWith("Database limit") && (
+        <div role="alert" className="mx-3 mb-3 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
+          {error}
+        </div>
+      )}
       <nav className="flex gap-1 overflow-x-auto px-3 pb-3 md:flex-1 md:flex-col md:pb-0">
         {LINKS.filter((l) => emailOn || !EMAIL_PAGES.includes(l.href)).map(({ href, label, icon: Icon }) => {
           const active = href === "/" ? path === "/" : path === href || path.startsWith(`${href}/`); // "/calls" isn't "/callbacks"

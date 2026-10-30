@@ -175,7 +175,7 @@ function LeadInner() {
   const emailOn = useEmailOn();
   const [notes, setNotes] = useState<string | null>(null);
   const [deepBusy, setDeepBusy] = useState(false);
-  const { data: l, reload, error } = useApi<Lead>(`/api/leads/${id}`, 8000);
+  const { data: l, reload, error } = useApi<Lead>(`/api/leads/${id}`, 20_000);
   if (error === "Not found") return <Notice tone="red">This lead was deleted.</Notice>;
   if (!l) return <p className="text-sm text-muted">Loading…</p>;
   const a = l.audit;

@@ -1,5 +1,6 @@
 import tzlookup from "tz-lookup";
 import { db, logEvent, now } from "./db";
+import { forget } from "./memo";
 import { getSettings, saveSettings } from "./settings";
 import { isSuppressed, suppress } from "./outreach/suppression";
 import { FOLLOWUP_STEPS } from "./outreach/templates";
@@ -217,6 +218,7 @@ export async function logCall(
     ],
   ]);
   if (bad === "not_customer") await excludeCategoryOf(businessId);
+  forget("stats"); // the Calls page counts update right away, not after the 15 s cache
 
   if (STOPS_EMAIL.includes(outcome)) await stopEmails(businessId);
   if (outcome === "do_not_call") {

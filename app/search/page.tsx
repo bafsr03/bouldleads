@@ -108,7 +108,7 @@ export default function SearchPage() {
   const [sourceChoice, setSource] = useState<"osm" | "google" | "both" | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ tone: "red" | "green"; text: string } | null>(null);
-  const { data: searches, reload } = useApi<SearchRow[]>("/api/searches", 4000);
+  const { data: searches, reload } = useApi<SearchRow[]>("/api/searches", 8000);
   const { data: settings } = useApi<{ secrets: { googlePlacesApiKey: boolean } }>("/api/settings");
   const { data: coverage } = useApi<{ areas: CoverageArea[] }>("/api/coverage?bbox=0,0,0,0", 15_000);
   const hasGoogle = !!settings?.secrets.googlePlacesApiKey;

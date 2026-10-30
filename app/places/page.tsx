@@ -33,7 +33,7 @@ function Metric({ n, label, tone }: { n: number; label: string; tone?: string })
 }
 
 export default function PlacesPage() {
-  const { data: places, reload } = useApi<Place[]>("/api/places", 10_000);
+  const { data: places, reload } = useApi<Place[]>("/api/places", 30_000);
   const [refreshKey, setRefreshKey] = useState(0);
   const reloadMap = () => setRefreshKey((k) => k + 1);
   const [open, setOpen] = useState<Record<string, boolean>>({});

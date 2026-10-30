@@ -2,10 +2,15 @@ import { connection } from "next/server";
 import { db } from "@/lib/db";
 import { STAGE_SQL } from "@/lib/calls";
 import { json } from "@/lib/api";
+import { memo } from "@/lib/memo";
 
 // Searches grouped by place, with lead and outreach counts for each search.
 export async function GET() {
   await connection();
+  return json(await memo("places", 20_000, places));
+}
+
+async function places() {
   const rows = await db.all<Record<string, unknown> & { place: string | null }>(
     `SELECT s.id, s.label, s.place, s.source, s.status, s.categories, s.found, s.error, s.created_at, s.finished_at,
        s.tiles_done, s.tiles_total, s.area,
@@ -29,5 +34,5 @@ export async function GET() {
     g.last = Math.max(g.last, Number(r.created_at));
     groups.set(place, g);
   }
-  return json([...groups.values()].sort((a, b) => b.last - a.last));
+  return [...groups.values()].sort((a, b) => b.last - a.last);
 }

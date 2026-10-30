@@ -68,7 +68,7 @@ const PRESETS: Record<string, { title: string; smtpHost: string; smtpPort: numbe
 const blank = { preset: "google", label: "", fromName: "", email: "", username: "", password: "", dailyCap: 40, warmupEnabled: true, ...PRESETS.google };
 
 export default function InboxesPage() {
-  const { data: inboxes, reload } = useApi<Inbox[]>("/api/inboxes", 10_000);
+  const { data: inboxes, reload } = useApi<Inbox[]>("/api/inboxes", 30_000);
   const [form, setForm] = useState(blank);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);

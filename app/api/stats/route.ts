@@ -3,13 +3,25 @@ import { db } from "@/lib/db";
 import { getSettings, getSys } from "@/lib/settings";
 import { localDate } from "@/lib/outreach/inboxes";
 import { STAGE_SQL } from "@/lib/calls";
-import { json } from "@/lib/api";
+import { bad, json } from "@/lib/api";
+import { memo } from "@/lib/memo";
 
 const groupCount = async (col: string) =>
   Object.fromEntries((await db.all<{ k: string; n: number }>(`SELECT ${col} AS k, COUNT(*) AS n FROM businesses WHERE ${col} IS NOT NULL GROUP BY k`)).map((r) => [r.k, r.n]));
 
+// Polled by the sidebar and the dashboard on every open tab: cached for 15 s (lib/memo.ts).
 export async function GET() {
   await connection();
+  try {
+    return json(await memo("stats", 15_000, stats));
+  } catch (e) {
+    // Turso's monthly read allowance used up: every page would just look empty, so the sidebar says why.
+    if ((e as { code?: string }).code === "BLOCKED") return bad("Database limit reached: Turso has paused reads for this month. Your data is safe.", 503);
+    throw e;
+  }
+}
+
+async function stats() {
   const s = await getSettings();
   const one = (sql: string, ...args: (string | number)[]) => db.count(sql, ...args);
   const [
@@ -48,7 +60,7 @@ export async function GET() {
     one("SELECT COUNT(*) FROM businesses WHERE callback_at IS NOT NULL AND callback_at <= ? AND dnc = 0 AND phone_bad = 0", Date.now()),
   ]);
   const last = Number(lastTick ?? 0);
-  return json({
+  return {
     businesses, byStatus, sent, sentToday, replied, bounced, unsubscribed, queued, activeCampaigns, inboxes, contacted,
     withWebsite, emailFound, topTypes, tiers, outcomes, auditing, patterns, callbacksDue,
     stages: Object.fromEntries(stages.map((r) => [r.k, r.n])),
@@ -57,5 +69,5 @@ export async function GET() {
     workerOnline: Date.now() - last < 3 * 60_000,
     setupDone: !!(s.companyName && s.postalAddress),
     emailOutreach: s.emailOutreach,
-  });
+  };
 }

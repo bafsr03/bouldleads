@@ -2,6 +2,7 @@ import { connection } from "next/server";
 import tzlookup from "tz-lookup";
 import { db } from "@/lib/db";
 import { json } from "@/lib/api";
+import { memo } from "@/lib/memo";
 import { CONVERSATION, NOT_REACHED } from "@/lib/call-outcomes";
 
 // Call-first reporting: dials, answer rate, bookings and wins by tier, business type and pitch type; answer rate
@@ -27,6 +28,10 @@ const groupSql = (key: string) => `
 
 export async function GET() {
   await connection();
+  return json(await memo("report", 60_000, report));
+}
+
+async function report() {
   const since = Date.now() - 28 * 86_400_000;
   const [weekly, badBySearch, badByCity, badReasons] = await Promise.all([
     // Week = Monday to Sunday (UTC). Conversations = talked to the owner; screen shares = booked.
@@ -75,5 +80,5 @@ export async function GET() {
   }
 
   const steps = sentByStep.map((s) => ({ step: s.step, sent: s.n, replied: repliedByStep.find((r) => r.step === s.step)?.n ?? 0 }));
-  return json({ totals, byTier, byType, byPitch, byHour: hours.filter((h) => h.dials > 0), followupSteps: steps, weekly, badBySearch, badByCity, badReasons });
+  return { totals, byTier, byType, byPitch, byHour: hours.filter((h) => h.dials > 0), followupSteps: steps, weekly, badBySearch, badByCity, badReasons };
 }

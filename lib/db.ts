@@ -278,7 +278,8 @@ async function migrate(c: Client) {
     CREATE INDEX IF NOT EXISTS idx_businesses_call ON businesses(call_outcome);
     CREATE INDEX IF NOT EXISTS idx_cl_business ON campaign_leads(business_id);
     CREATE INDEX IF NOT EXISTS idx_businesses_check ON businesses(check_priority);
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_businesses_slug ON businesses(check_slug);`);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_businesses_slug ON businesses(check_slug);
+    CREATE INDEX IF NOT EXISTS idx_businesses_callback ON businesses(callback_at);`);
   // Once: every audited lead is researched again under the Oct 28 2026 rules (service + city + state
   // searches, the state in the city lookup, excluded categories, the website grade and the new call
   // order). Closed leads are left alone; the free-tier guard still caps the Google calls.

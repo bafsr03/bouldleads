@@ -34,11 +34,26 @@ export function useApi<T>(url: string | null, pollMs?: number) {
     }
   }, []);
 
+  // Polling pauses while the tab is hidden (every request reads the database, which is billed per row)
+  // and catches up as soon as it's shown again.
   useEffect(() => {
     reload();
     if (!pollMs) return;
-    const t = setInterval(reload, pollMs);
-    return () => clearInterval(t);
+    let last = Date.now();
+    const tick = () => {
+      if (document.hidden) return;
+      last = Date.now();
+      reload();
+    };
+    const t = setInterval(tick, pollMs);
+    const onShow = () => {
+      if (!document.hidden && Date.now() - last > pollMs) tick();
+    };
+    document.addEventListener("visibilitychange", onShow);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", onShow);
+    };
   }, [url, pollMs, reload]);
 
   return { data, error, reload };
